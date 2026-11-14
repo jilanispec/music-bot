@@ -23,15 +23,20 @@ from storage.manager import (
 
 router = Router()
 
+# Telegram bot username and registered Mini App short name.
 BOT_USERNAME = "ntrcric_showdownbot"
+MINIAPP_SHORT_NAME = "TANANGA"
 
 
 def miniapp_keyboard(room_id):
-    room_parameter = f"room_{room_id}"
-
+    """
+    Create a Telegram Mini App direct link for a specific room.
+    Works in group and private chat messages when the Mini App
+    direct-link configuration is valid.
+    """
     miniapp_url = (
-        f"https://t.me/{BOT_USERNAME}/music"
-        f"?startapp={room_parameter}"
+        f"https://t.me/{BOT_USERNAME}/{MINIAPP_SHORT_NAME}"
+        f"?startapp=room_{room_id}"
     )
 
     return InlineKeyboardMarkup(
@@ -207,8 +212,7 @@ async def room_info(message: Message):
             "<b>ROOM READY</b>\n\n"
             f"Room ID: <code>#{escape(str(room['room_id']))}</code>\n"
             f"Host ID: <code>{escape(str(room['host_id']))}</code>\n"
-            f"Queue: <code>{len(room.get('queue', []))}</code>\n\n"
-            "Use <code>/play song name</code> to add music.",
+            f"Queue: <code>{len(room.get('queue', []))}</code>",
             parse_mode="HTML",
             reply_markup=keyboard
         )
