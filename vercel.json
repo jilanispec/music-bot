@@ -17,6 +17,10 @@
       "dest": "/api/index.py"
     },
     {
+      "src": "/rooms/(.*)",
+      "dest": "/api/index.py"
+    },
+    {
       "src": "/playlists",
       "dest": "/api/index.py"
     },
