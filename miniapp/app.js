@@ -614,15 +614,141 @@ $("playlistName").addEventListener("keydown", event => {
   if (event.key === "Enter") createPlaylist();
 });
 
-// Room display
-const params = new URLSearchParams(window.location.search);
-const roomId = params.get("room");
 
-if (roomId) {
+// -------------------------
+// TELEGRAM ROOM CONNECTION
+// -------------------------
+
+function getRoomId() {
+  // Telegram Mini App direct-link parameter
+  const startParam = tg?.initDataUnsafe?.start_param || "";
+
+  if (startParam.startsWith("room_")) {
+    return startParam.substring(5);
+  }
+
+  // Browser URL fallback for testing
+  const params = new URLSearchParams(window.location.search);
+  const urlRoom = params.get("room");
+
+  if (urlRoom) return urlRoom;
+
+  // Additional Telegram URL fallback
+  const telegramParam = params.get("tgWebAppStartParam");
+
+  if (telegramParam?.startsWith("room_")) {
+    return telegramParam.substring(5);
+  }
+
+  return null;
+}
+
+const roomId = getRoomId();
+
+function updateRoomDisplay() {
+  if (!roomId) {
+    $("roomBadge").textContent = "NO ROOM";
+    $("settingsRoom").textContent = "No room selected";
+    return;
+  }
+
   $("roomBadge").textContent = `ROOM #${roomId}`;
   $("settingsRoom").textContent = `Room #${roomId}`;
 }
 
-// Initial render
+// Load the shared queue from GitHub-backed room storage
+async function loadRoomQueue() {
+  if (!roomId) {
+    console.warn("No Telegram room parameter found.");
+    return;
+  }
+
+  try {
+    const data = await apiRequest(
+      `/rooms/${encodeURIComponent(roomId)}`
+    );
+
+    if (!data.success || !data.room) {
+      throw new Error("Room data unavailable.");
+    }
+
+    const serverQueue = data.room.queue || [];
+
+    if (!Array.isArray(serverQueue)) {
+      throw new Error("Invalid room queue.");
+    }
+
+    // Server queue is authoritative for this room.
+    queue = serverQueue;
+
+    saveQueue();
+
+    // Restore current song selection if it exists in the queue.
+    const currentSong = data.room.current_song;
+
+    if (currentSong?.id) {
+      const index = queue.findIndex(
+        song => song.id === currentSong.id
+      );
+
+      currentIndex = index;
+    } else {
+      currentIndex = -1;
+    }
+
+    renderQueue();
+
+    console.log(
+      `Loaded room ${roomId}: ${queue.length} songs`
+    );
+
+    if (queue.length > 0) {
+      $("searchStatus").textContent =
+        `${queue.length} songs loaded from room #${roomId}`;
+    } else {
+      $("searchStatus").textContent =
+        `Room #${roomId} is ready. Queue is empty.`;
+    }
+
+  } catch (error) {
+    console.error("ROOM LOAD ERROR:", error);
+
+    $("searchStatus").textContent =
+      `Could not load room: ${error.message}`;
+  }
+}
+
+// Refresh shared queue periodically
+let roomRefreshTimer = null;
+
+function startRoomRefresh() {
+  if (!roomId) return;
+
+  clearInterval(roomRefreshTimer);
+
+  roomRefreshTimer = setInterval(() => {
+    loadRoomQueue();
+  }, 10000);
+}
+
+// Refresh when returning to the Mini App
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && roomId) {
+    loadRoomQueue();
+  }
+});
+
+// -------------------------
+// INITIALIZATION
+// -------------------------
+
+updateRoomDisplay();
+
 renderQueue();
 loadPlaylists();
+
+if (roomId) {
+  loadRoomQueue();
+  startRoomRefresh();
+}
+
