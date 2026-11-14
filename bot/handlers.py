@@ -25,7 +25,6 @@ router = Router()
 
 # Telegram bot username and registered Mini App short name.
 BOT_USERNAME = "ntrcric_showdownbot"
-MINIAPP_SHORT_NAME = "TANANGA"
 
 
 def miniapp_keyboard(room_id):
@@ -35,7 +34,7 @@ def miniapp_keyboard(room_id):
     direct-link configuration is valid.
     """
     miniapp_url = (
-        f"https://t.me/{BOT_USERNAME}/{MINIAPP_SHORT_NAME}"
+        f"https://t.me/{BOT_USERNAME}"
         f"?startapp=room_{room_id}"
     )
 
