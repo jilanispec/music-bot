@@ -23,7 +23,7 @@ from storage.manager import (
 
 router = Router()
 
-BOT_USERNAME = "YOUR_BOT_USERNAME"
+BOT_USERNAME = "@ntrcric_showdownbot"
 
 
 def miniapp_keyboard(room_id):
