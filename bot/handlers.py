@@ -18,21 +18,16 @@ from storage.manager import (
     add_song,
     get_queue,
     remove_song,
-    skip_song
+    skip_song,
+    set_room_playback_mode
 )
 
 router = Router()
 
-# Telegram bot username and registered Mini App short name.
 BOT_USERNAME = "ntrcric_showdownbot"
 
 
 def miniapp_keyboard(room_id):
-    """
-    Create a Telegram Mini App direct link for a specific room.
-    Works in group and private chat messages when the Mini App
-    direct-link configuration is valid.
-    """
     miniapp_url = (
         f"https://t.me/{BOT_USERNAME}"
         f"?startapp=room_{room_id}"
@@ -90,8 +85,8 @@ async def start(message: Message):
         "<b>TANANG MUSIC</b>\n"
         "<i>Your music. Your room.</i>\n\n"
         "<b>MUSIC</b>\n"
-        "• <code>/play song name</code>\n"
-        "• <code>/vplay video name</code>\n\n"
+        "• <code>/play song name</code> — Audio mode\n"
+        "• <code>/vplay video name</code> — Video mode\n\n"
         "<b>ROOM</b>\n"
         "• <code>/room</code>\n"
         "• <code>/queue</code>\n"
@@ -102,14 +97,20 @@ async def start(message: Message):
     )
 
 
-
-async def process_request(message: Message, query: str, media_type: str):
+async def process_request(
+    message: Message,
+    query: str,
+    media_type: str
+):
     if not message.from_user:
-        await message.answer("Could not identify the requesting user.")
+        await message.answer(
+            "Could not identify the requesting user."
+        )
         return
 
     if not query:
         command = "/play" if media_type == "music" else "/vplay"
+
         await message.answer(
             f"Usage: <code>{command} song name</code>",
             parse_mode="HTML"
@@ -134,7 +135,9 @@ async def process_request(message: Message, query: str, media_type: str):
         )
 
         if not room:
-            await status.edit_text("Could not create or load this room.")
+            await status.edit_text(
+                "Could not create or load this room."
+            )
             return
 
         position = await add_song(
@@ -145,13 +148,26 @@ async def process_request(message: Message, query: str, media_type: str):
         )
 
         if position is None:
-            await status.edit_text("Could not add the song to the room.")
+            await status.edit_text(
+                "Could not add the song to the room."
+            )
             return
+
+        # Save the mode selected by the Telegram command.
+        play_mode = "audio" if media_type == "music" else "video"
+
+        await set_room_playback_mode(
+            message.chat.id,
+            play_mode
+        )
 
         title = escape(str(song.get("title", "Unknown title")))
         channel = escape(str(song.get("channel", "YouTube")))
         duration = escape(str(song.get("duration", "Unknown")))
-        video_url = escape(str(song.get("url", "")), quote=True)
+        video_url = escape(
+            str(song.get("url", "")),
+            quote=True
+        )
 
         keyboard = miniapp_keyboard(room["room_id"])
 
@@ -161,7 +177,8 @@ async def process_request(message: Message, query: str, media_type: str):
             f"<i>{channel}</i>\n"
             f"<code>{duration}</code>\n\n"
             f"Room: <code>#{escape(str(room['room_id']))}</code>\n"
-            f"Queue position: <code>{position}</code>"
+            f"Queue position: <code>{position}</code>\n"
+            f"Mode: <code>{play_mode.upper()}</code>"
         )
 
         thumbnail = song.get("thumbnail")
@@ -194,7 +211,6 @@ async def process_request(message: Message, query: str, media_type: str):
             await message.answer(
                 "Something went wrong while processing your request."
             )
-
 
 
 @router.message(Command("play"))
@@ -248,7 +264,9 @@ async def queue_command(message: Message):
         queue = await get_queue(message.chat.id)
 
         if queue is None:
-            await message.answer("No active room. Send /room first.")
+            await message.answer(
+                "No active room. Send /room first."
+            )
             return
 
         if not queue:
@@ -284,7 +302,9 @@ async def skip_command(message: Message):
     room = await get_room(message.chat.id)
 
     if not room:
-        await message.answer("No active room. Send /room first.")
+        await message.answer(
+            "No active room. Send /room first."
+        )
         return
 
     if not await can_manage_room(message, room):
@@ -314,7 +334,9 @@ async def remove_command(message: Message):
     room = await get_room(message.chat.id)
 
     if not room:
-        await message.answer("No active room. Send /room first.")
+        await message.answer(
+            "No active room. Send /room first."
+        )
         return
 
     if not await can_manage_room(message, room):
@@ -383,8 +405,8 @@ async def help_command(message: Message):
     await message.answer(
         "<b>TANANG MUSIC COMMANDS</b>\n\n"
         "<code>/room</code> — Create or show room\n"
-        "<code>/play song</code> — Add music\n"
-        "<code>/vplay video</code> — Add video\n"
+        "<code>/play song</code> — Audio mode\n"
+        "<code>/vplay video</code> — Video mode\n"
         "<code>/queue</code> — Show queue\n"
         "<code>/skip</code> — Skip first item\n"
         "<code>/remove 2</code> — Remove queue item\n"
