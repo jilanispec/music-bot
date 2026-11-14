@@ -3,10 +3,14 @@ from html import escape
 
 from aiogram import Router
 from aiogram.filters import CommandStart, Command
-from aiogram.types import Message
+from aiogram.types import (
+    Message,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton
+)
 
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from bot.youtube import search_youtube
+
 from storage.manager import (
     get_or_create_room,
     get_room,
@@ -18,6 +22,28 @@ from storage.manager import (
 )
 
 router = Router()
+
+BOT_USERNAME = "YOUR_BOT_USERNAME"
+
+
+def miniapp_keyboard(room_id):
+    room_parameter = f"room_{room_id}"
+
+    miniapp_url = (
+        f"https://t.me/{BOT_USERNAME}/music"
+        f"?startapp={room_parameter}"
+    )
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="OPEN TANANG MUSIC",
+                    url=miniapp_url
+                )
+            ]
+        ]
+    )
 
 
 async def can_manage_room(message: Message, room):
@@ -42,7 +68,11 @@ async def can_manage_room(message: Message, room):
             return True
 
         if member.status == "administrator":
-            return getattr(member, "can_manage_video_chats", False)
+            return getattr(
+                member,
+                "can_manage_video_chats",
+                False
+            )
 
     except Exception as error:
         print("Permission check failed:", repr(error))
@@ -68,7 +98,6 @@ async def start(message: Message):
     )
 
 
-
 async def process_request(message: Message, query: str, media_type: str):
     if not message.from_user:
         await message.answer("Could not identify the requesting user.")
@@ -76,6 +105,7 @@ async def process_request(message: Message, query: str, media_type: str):
 
     if not query:
         command = "/play" if media_type == "music" else "/vplay"
+
         await message.answer(
             f"Usage: <code>{command} song name</code>",
             parse_mode="HTML"
@@ -119,21 +149,7 @@ async def process_request(message: Message, query: str, media_type: str):
         duration = escape(str(song.get("duration", "Unknown")))
         url = escape(str(song.get("url", "")), quote=True)
 
-        keyboard = None
-
-        if message.chat.type == "private":
-            keyboard = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="OPEN TANANG MUSIC",
-                            web_app=WebAppInfo(
-                                url="https://music-bot-dusky.vercel.app/"
-                            )
-                        )
-                    ]
-                ]
-            )
+        keyboard = miniapp_keyboard(room["room_id"])
 
         await status.edit_text(
             f"<b>ADDED TO QUEUE</b>\n\n"
@@ -150,10 +166,10 @@ async def process_request(message: Message, query: str, media_type: str):
 
     except Exception as error:
         print("PLAY REQUEST ERROR:", repr(error))
+
         await status.edit_text(
             "Something went wrong while processing your request."
         )
-
 
 
 @router.message(Command("play"))
@@ -175,7 +191,6 @@ async def room_info(message: Message):
         return
 
     try:
-        # IMPORTANT: create=True. /room must create a room.
         room = await get_or_create_room(
             chat_id=message.chat.id,
             host_id=message.from_user.id,
@@ -186,22 +201,21 @@ async def room_info(message: Message):
             await message.answer("Could not create the room.")
             return
 
-        queue = room.get("queue", [])
+        keyboard = miniapp_keyboard(room["room_id"])
 
         await message.answer(
             "<b>ROOM READY</b>\n\n"
             f"Room ID: <code>#{escape(str(room['room_id']))}</code>\n"
             f"Host ID: <code>{escape(str(room['host_id']))}</code>\n"
-            f"Queue: <code>{len(queue)}</code>\n\n"
+            f"Queue: <code>{len(room.get('queue', []))}</code>\n\n"
             "Use <code>/play song name</code> to add music.",
-            parse_mode="HTML"
+            parse_mode="HTML",
+            reply_markup=keyboard
         )
 
     except Exception as error:
         print("ROOM CREATE ERROR:", repr(error))
-        await message.answer(
-            "Could not create the room. Check the server logs."
-        )
+        await message.answer("Could not create the room.")
 
 
 @router.message(Command("queue"))
@@ -210,9 +224,7 @@ async def queue_command(message: Message):
         queue = await get_queue(message.chat.id)
 
         if queue is None:
-            await message.answer(
-                "No active room. Send /room to create one."
-            )
+            await message.answer("No active room. Send /room first.")
             return
 
         if not queue:
@@ -263,7 +275,8 @@ async def skip_command(message: Message):
             return
 
         await message.answer(
-            f"<b>Skipped:</b> {escape(str(skipped.get('title', 'Unknown')))}",
+            f"<b>Skipped:</b> "
+            f"{escape(str(skipped.get('title', 'Unknown')))}",
             parse_mode="HTML"
         )
 
@@ -304,7 +317,8 @@ async def remove_command(message: Message):
             return
 
         await message.answer(
-            f"<b>Removed:</b> {escape(str(removed.get('title', 'Unknown')))}",
+            f"<b>Removed:</b> "
+            f"{escape(str(removed.get('title', 'Unknown')))}",
             parse_mode="HTML"
         )
 
