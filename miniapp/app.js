@@ -1,25 +1,51 @@
 
 const tg = window.Telegram?.WebApp;
+
 if (tg) {
   tg.ready();
   tg.expand();
 }
 
 const API_BASE = "";
+const INIT_DATA = tg?.initData || "";
 
 let player = null;
 let playerReady = false;
 let currentIndex = -1;
 
 let queue = JSON.parse(localStorage.getItem("tanang_queue") || "[]");
-let playlists = JSON.parse(localStorage.getItem("tanang_playlists") || "[]");
+let playlists = [];
 let searchResults = [];
 
 const $ = id => document.getElementById(id);
 
-function saveData() {
+function authHeaders() {
+  return {
+    "Content-Type": "application/json",
+    "X-Telegram-Init-Data": INIT_DATA
+  };
+}
+
+function saveQueue() {
   localStorage.setItem("tanang_queue", JSON.stringify(queue));
-  localStorage.setItem("tanang_playlists", JSON.stringify(playlists));
+}
+
+async function apiRequest(path, options = {}) {
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: {
+      ...authHeaders(),
+      ...(options.headers || {})
+    }
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(data.detail || `API error ${response.status}`);
+  }
+
+  return data;
 }
 
 function showPage(pageId) {
@@ -36,15 +62,14 @@ document.querySelectorAll(".nav-item").forEach(button => {
   button.addEventListener("click", () => showPage(button.dataset.page));
 });
 
-// Official YouTube IFrame API
+// YouTube player
 window.onYouTubeIframeAPIReady = function () {
   playerReady = true;
 };
 
 function loadPlayer(videoId) {
   if (!playerReady) {
-    $("searchStatus").textContent =
-      "Player is loading. Please try again in a moment.";
+    $("searchStatus").textContent = "Player is loading. Try again shortly.";
     return;
   }
 
@@ -54,40 +79,31 @@ function loadPlayer(videoId) {
   }
 
   player = new YT.Player("youtubePlayer", {
-    videoId: videoId,
+    videoId,
     playerVars: {
       playsinline: 1,
       controls: 1,
       rel: 0,
-      fs: 1,
       origin: window.location.origin
     },
     events: {
-      onReady: () => {
-        player.playVideo();
-      },
+      onReady: event => event.target.playVideo(),
       onStateChange: event => {
-        if (event.data === YT.PlayerState.PLAYING) {
-          $("playPauseButton").textContent = "Ⅱ";
-        } else {
-          $("playPauseButton").textContent = "▶";
-        }
+        $("playPauseButton").textContent =
+          event.data === YT.PlayerState.PLAYING ? "Ⅱ" : "▶";
 
-        if (event.data === YT.PlayerState.ENDED) {
-          playNext();
-        }
+        if (event.data === YT.PlayerState.ENDED) playNext();
       },
       onError: event => {
         $("searchStatus").textContent =
-          "This video cannot be played here. Try another result. Error: " +
-          event.data;
+          `This video cannot be played here. Error: ${event.data}`;
       }
     }
   });
 }
 
 function playSong(song) {
-  if (!song || !song.id) return;
+  if (!song?.id) return;
 
   $("currentTitle").textContent = song.title;
   $("currentChannel").textContent = song.channel || "YouTube";
@@ -144,9 +160,7 @@ async function searchMusic() {
       `${API_BASE}/search?q=${encodeURIComponent(query)}`
     );
 
-    if (!response.ok) {
-      throw new Error("Search API returned " + response.status);
-    }
+    if (!response.ok) throw new Error(`Search error ${response.status}`);
 
     const data = await response.json();
     searchResults = data.results || [];
@@ -156,21 +170,18 @@ async function searchMusic() {
       return;
     }
 
-    $("searchStatus").textContent =
-      `${searchResults.length} results found`;
-
+    $("searchStatus").textContent = `${searchResults.length} results found`;
     renderResults();
   } catch (error) {
     console.error(error);
-    $("searchStatus").textContent =
-      "Search unavailable. Please try again.";
+    $("searchStatus").textContent = "Search unavailable. Try again.";
   }
 }
 
 function renderResults() {
   $("searchResults").innerHTML = "";
 
-  searchResults.forEach((song, index) => {
+  searchResults.forEach(song => {
     const card = document.createElement("div");
     card.className = "result-card";
 
@@ -185,8 +196,7 @@ function renderResults() {
     title.textContent = song.title;
 
     const channel = document.createElement("p");
-    channel.textContent =
-      `${song.channel || "Unknown"} · ${song.duration || ""}`;
+    channel.textContent = `${song.channel || "Unknown"} · ${song.duration || ""}`;
 
     info.append(title, channel);
 
@@ -196,16 +206,14 @@ function renderResults() {
     const playButton = document.createElement("button");
     playButton.textContent = "PLAY";
     playButton.addEventListener("click", () => {
-      const songToPlay = song;
-
       if (!queue.some(item => item.id === song.id)) {
         queue.push(song);
-        saveData();
+        saveQueue();
         renderQueue();
       }
 
-      currentIndex = queue.findIndex(item => item.id === songToPlay.id);
-      playSong(songToPlay);
+      currentIndex = queue.findIndex(item => item.id === song.id);
+      playSong(song);
     });
 
     const addButton = document.createElement("button");
@@ -230,7 +238,7 @@ function addToQueue(song) {
   if (queue.some(item => item.id === song.id)) return;
 
   queue.push(song);
-  saveData();
+  saveQueue();
   renderQueue();
 }
 
@@ -262,9 +270,11 @@ function renderQueue() {
     remove.textContent = "REMOVE";
     remove.addEventListener("click", () => {
       queue.splice(index, 1);
+
       if (currentIndex === index) currentIndex = -1;
       else if (currentIndex > index) currentIndex--;
-      saveData();
+
+      saveQueue();
       renderQueue();
     });
 
@@ -276,11 +286,84 @@ function renderQueue() {
 $("clearQueueButton").addEventListener("click", () => {
   queue = [];
   currentIndex = -1;
-  saveData();
+  saveQueue();
   renderQueue();
 });
 
-// Playlists
+// Permanent playlists: GitHub JSON API
+async function loadPlaylists() {
+  $("playlistList").textContent = "Loading playlists...";
+
+  try {
+    const data = await apiRequest("/playlists");
+    playlists = Array.isArray(data) ? data : data.playlists || [];
+    renderPlaylists();
+  } catch (error) {
+    console.error(error);
+    $("playlistList").textContent =
+      `Could not load playlists: ${error.message}`;
+  }
+}
+
+async function createPlaylist() {
+  const name = $("playlistName").value.trim();
+
+  if (!name) {
+    alert("Enter a playlist name.");
+    return;
+  }
+
+  try {
+    await apiRequest("/playlists", {
+      method: "POST",
+      body: JSON.stringify({ name })
+    });
+
+    $("playlistName").value = "";
+    await loadPlaylists();
+  } catch (error) {
+    alert(`Could not create playlist: ${error.message}`);
+  }
+}
+
+async function deletePlaylist(playlistId) {
+  if (!confirm("Delete this playlist?")) return;
+
+  try {
+    await apiRequest(`/playlists/${encodeURIComponent(playlistId)}`, {
+      method: "DELETE"
+    });
+
+    await loadPlaylists();
+  } catch (error) {
+    alert(`Could not delete playlist: ${error.message}`);
+  }
+}
+
+async function saveQueueToPlaylist(playlistId) {
+  if (!queue.length) {
+    alert("Your queue is empty.");
+    return;
+  }
+
+  try {
+    for (const song of queue) {
+      await apiRequest(
+        `/playlists/${encodeURIComponent(playlistId)}/songs`,
+        {
+          method: "POST",
+          body: JSON.stringify({ song })
+        }
+      );
+    }
+
+    await loadPlaylists();
+    alert("Queue saved to playlist.");
+  } catch (error) {
+    alert(`Could not save queue: ${error.message}`);
+  }
+}
+
 function renderPlaylists() {
   $("playlistList").innerHTML = "";
 
@@ -289,7 +372,7 @@ function renderPlaylists() {
     return;
   }
 
-  playlists.forEach((playlist, index) => {
+  playlists.forEach(playlist => {
     const card = document.createElement("div");
     card.className = "playlist-card";
 
@@ -297,48 +380,28 @@ function renderPlaylists() {
     title.textContent = playlist.name;
 
     const count = document.createElement("p");
-    count.textContent = `${playlist.songs.length} songs`;
+    count.textContent = `${(playlist.songs || []).length} songs`;
 
-    const addCurrentQueue = document.createElement("button");
-    addCurrentQueue.className = "secondary-button";
-    addCurrentQueue.textContent = "SAVE QUEUE TO PLAYLIST";
-    addCurrentQueue.addEventListener("click", () => {
-      playlist.songs = [...queue];
-      saveData();
-      renderPlaylists();
-    });
+    const saveButton = document.createElement("button");
+    saveButton.className = "secondary-button";
+    saveButton.textContent = "SAVE QUEUE TO PLAYLIST";
+    saveButton.addEventListener("click", () =>
+      saveQueueToPlaylist(playlist.playlist_id)
+    );
 
     const deleteButton = document.createElement("button");
     deleteButton.className = "secondary-button";
     deleteButton.textContent = "DELETE";
-    deleteButton.addEventListener("click", () => {
-      playlists.splice(index, 1);
-      saveData();
-      renderPlaylists();
-    });
+    deleteButton.addEventListener("click", () =>
+      deletePlaylist(playlist.playlist_id)
+    );
 
-    card.append(title, count, addCurrentQueue, deleteButton);
+    card.append(title, count, saveButton, deleteButton);
     $("playlistList").appendChild(card);
   });
 }
 
-$("createPlaylist").addEventListener("click", () => {
-  const name = $("playlistName").value.trim();
-
-  if (!name) {
-    alert("Enter a playlist name.");
-    return;
-  }
-
-  playlists.push({
-    name,
-    songs: []
-  });
-
-  $("playlistName").value = "";
-  saveData();
-  renderPlaylists();
-});
+$("createPlaylist").addEventListener("click", createPlaylist);
 
 // Room display
 const params = new URLSearchParams(window.location.search);
@@ -350,4 +413,4 @@ if (roomId) {
 }
 
 renderQueue();
-renderPlaylists();
+loadPlaylists();
