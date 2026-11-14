@@ -39,11 +39,11 @@
     }
   },
   "-1004412945197": {
-    "room_id": "0004",
+    "room_id": "0006",
     "chat_id": "-1004412945197",
     "host_id": "2079655933",
-    "created_at": "2026-11-14T15:58:24.838862+00:00",
-    "status": "closed",
+    "created_at": "2026-11-14T16:08:56.979485+00:00",
+    "status": "active",
     "current_song": null,
     "queue": [],
     "participants": [],
@@ -51,9 +51,7 @@
     "playback": {
       "state": "paused",
       "position": 0,
-      "updated_at": "2026-11-14T16:08:50.877428+00:00",
-      "mode": "audio"
-    },
-    "closed_at": "2026-11-14T16:08:50.877406+00:00"
+      "updated_at": "2026-11-14T16:08:56.979501+00:00"
+    }
   }
 }
