@@ -5,6 +5,32 @@ import uuid
 from storage.github_json import read_json, update_json
 from storage.schemas import new_user, new_playlist, new_room
 
+from storage.github_json import update_json
+from storage.schemas import now_utc
+
+
+async def set_room_playback_mode(chat_id, mode):
+    if mode not in ("audio", "video"):
+        raise ValueError("Invalid playback mode")
+
+    chat_id = str(chat_id)
+
+    def update(data):
+        room = data.get(chat_id)
+
+        if not room or room.get("status") != "active":
+            return data
+
+        playback = room.setdefault("playback", {})
+        playback["mode"] = mode
+        playback["updated_at"] = now_utc()
+
+        return data
+
+    await update_json("database/rooms.json", update)
+
+    return await get_room(chat_id)
+    
 
 def timestamp():
     return datetime.now(timezone.utc).isoformat()
