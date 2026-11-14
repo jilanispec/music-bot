@@ -68,6 +68,7 @@ async def start(message: Message):
     )
 
 
+
 async def process_request(message: Message, query: str, media_type: str):
     if not message.from_user:
         await message.answer("Could not identify the requesting user.")
@@ -84,7 +85,6 @@ async def process_request(message: Message, query: str, media_type: str):
     status = await message.answer("Searching YouTube...")
 
     try:
-        # Search one result for the Telegram command.
         results = await search_youtube(query, limit=1)
 
         if not results:
@@ -93,7 +93,6 @@ async def process_request(message: Message, query: str, media_type: str):
 
         song = results[0]
 
-        # Create the room automatically if it does not exist.
         room = await get_or_create_room(
             chat_id=message.chat.id,
             host_id=message.from_user.id,
@@ -101,7 +100,7 @@ async def process_request(message: Message, query: str, media_type: str):
         )
 
         if not room:
-            await status.edit_text("Could not create or load this chat's room.")
+            await status.edit_text("Could not create or load this room.")
             return
 
         position = await add_song(
@@ -112,9 +111,7 @@ async def process_request(message: Message, query: str, media_type: str):
         )
 
         if position is None:
-            await status.edit_text(
-                "Could not add the song. Please try again."
-            )
+            await status.edit_text("Could not add the song to the room.")
             return
 
         title = escape(str(song.get("title", "Unknown title")))
@@ -122,11 +119,10 @@ async def process_request(message: Message, query: str, media_type: str):
         duration = escape(str(song.get("duration", "Unknown")))
         url = escape(str(song.get("url", "")), quote=True)
 
-        miniapp_keyboard = None
+        keyboard = None
 
-        # Telegram Web App buttons are supported in private chats.
-       if message.chat.type == "private":
-           miniapp_keyboard = InlineKeyboardMarkup(
+        if message.chat.type == "private":
+            keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [
                         InlineKeyboardButton(
@@ -146,18 +142,18 @@ async def process_request(message: Message, query: str, media_type: str):
             f"<code>{duration}</code>\n\n"
             f"Room: <code>#{escape(str(room['room_id']))}</code>\n"
             f"Queue position: <code>{position}</code>\n\n"
-            f'<a href="{url}">Open on YouTube</a>\n\n'
-            "<i>Open the Mini App for playback.</i>",
+            f'<a href="{url}">Open on YouTube</a>',
             parse_mode="HTML",
-            disable_web_page_preview=True
+            disable_web_page_preview=True,
+            reply_markup=keyboard
         )
 
     except Exception as error:
         print("PLAY REQUEST ERROR:", repr(error))
         await status.edit_text(
-            "Something went wrong while processing your request. "
-            "Please try again."
+            "Something went wrong while processing your request."
         )
+
 
 
 @router.message(Command("play"))
