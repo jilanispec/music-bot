@@ -8,42 +8,49 @@ if (tg) {
 
 const API_BASE = "";
 const INIT_DATA = tg?.initData || "";
-
 const $ = id => document.getElementById(id);
 
-let currentPlayMode = "audio";
-let lastRoomSongId = null;
-let lastPlaybackUpdatedAt = null;
 let player = null;
 let playerReady = false;
 let pendingVideoId = null;
+let currentPlayMode = "audio";
 let currentIndex = -1;
+let lastRoomSongId = null;
 let isSeeking = false;
 let shuffleEnabled = false;
+let zoomLevel = 1;
 let progressTimer = null;
 let roomRefreshTimer = null;
-let zoomLevel = 1;
+
 let queue = [];
 let playlists = [];
 let searchResults = [];
 
-try {
-  queue = JSON.parse(localStorage.getItem("tanang_queue") || "[]");
-  if (!Array.isArray(queue)) queue = [];
-} catch {
-  queue = [];
+function normalizeSong(song) {
+  if (!song || typeof song !== "object") return null;
+
+  const id = song.id || song.video_id;
+  if (!id) return null;
+
+  return {
+    ...song,
+    id: String(id),
+    video_id: String(id),
+    title: song.title || "Unknown title",
+    channel: song.channel || "YouTube",
+    thumbnail: song.thumbnail || "",
+    duration: song.duration || "",
+    url: song.url || `https://www.youtube.com/watch?v=${id}`,
+    media_type: song.media_type || "music"
+  };
 }
 
-const icons = {
-  play: '<svg viewBox="0 0 24 24"><path d="m8 5 12 7-12 7z"/></svg>',
-  pause: '<svg viewBox="0 0 24 24"><path d="M8 5h3v14H8zM15 5h3v14h-3z"/></svg>',
-  add: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
-  remove: '<svg viewBox="0 0 24 24"><path d="M5 7h14M10 11v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg>',
-  playlist: '<svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>'
-};
-
 function saveQueue() {
-  localStorage.setItem("tanang_queue", JSON.stringify(queue));
+  try {
+    localStorage.setItem("tanang_queue", JSON.stringify(queue));
+  } catch (error) {
+    console.warn("Queue save failed:", error);
+  }
 }
 
 function authHeaders() {
@@ -54,6 +61,10 @@ function authHeaders() {
 }
 
 async function apiRequest(path, options = {}) {
+  if (!INIT_DATA) {
+    throw new Error("Open this app through Telegram.");
+  }
+
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: {
@@ -81,10 +92,9 @@ function applyPlaybackMode(mode) {
   const button = $("videoModeButton");
 
   if (button) {
-    button.textContent =
-      currentPlayMode === "audio"
-        ? "WATCH VIDEO"
-        : "SWITCH TO AUDIO";
+    button.textContent = currentPlayMode === "audio"
+      ? "WATCH VIDEO"
+      : "SWITCH TO AUDIO";
   }
 
   document.body.classList.toggle(
@@ -99,9 +109,7 @@ function togglePlaybackMode() {
   );
 }
 
-// Keep the YouTube player visible in both modes.
-// Compact mode reduces its height rather than hiding the player.
-(function addPlayerModeStyles() {
+(function addPlayerStyles() {
   const style = document.createElement("style");
 
   style.textContent = `
@@ -115,7 +123,6 @@ function togglePlaybackMode() {
     #youtubePlayer {
       width: 100%;
       height: 100%;
-      transition: transform .2s ease;
     }
 
     body.audio-mode #videoFrame {
@@ -127,10 +134,9 @@ function togglePlaybackMode() {
     }
 
     .video-mode-button {
-      display: block;
       width: 100%;
       margin-top: 14px;
-      padding: 13px 16px;
+      padding: 13px;
       border: 1px solid #e5bd25;
       border-radius: 12px;
       background: #e5bd25;
@@ -144,7 +150,7 @@ function togglePlaybackMode() {
 })();
 
 // -------------------------
-// API
+// NAVIGATION
 // -------------------------
 
 function showPage(pageId) {
@@ -153,18 +159,25 @@ function showPage(pageId) {
   });
 
   document.querySelectorAll(".nav-item").forEach(button => {
-    button.classList.toggle("active", button.dataset.page === pageId);
+    button.classList.toggle(
+      "active",
+      button.dataset.page === pageId
+    );
   });
 
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 document.querySelectorAll(".nav-item").forEach(button => {
-  button.addEventListener("click", () => showPage(button.dataset.page));
+  button.addEventListener("click", () => {
+    showPage(button.dataset.page);
+  });
 });
 
 document.querySelectorAll("[data-go]").forEach(button => {
-  button.addEventListener("click", () => showPage(button.dataset.go));
+  button.addEventListener("click", () => {
+    showPage(button.dataset.go);
+  });
 });
 
 document.querySelector(".brand")?.addEventListener("click", event => {
@@ -180,19 +193,19 @@ window.onYouTubeIframeAPIReady = function () {
   playerReady = true;
 
   if (pendingVideoId) {
-    const videoId = pendingVideoId;
+    const id = pendingVideoId;
     pendingVideoId = null;
-    loadPlayer(videoId);
+    loadPlayer(id);
   }
 };
 
 function formatTime(seconds) {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
 
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
+  const minutes = Math.floor(seconds / 60);
+  const remaining = Math.floor(seconds % 60);
 
-  return `${mins}:${String(secs).padStart(2, "0")}`;
+  return `${minutes}:${String(remaining).padStart(2, "0")}`;
 }
 
 function updateProgress() {
@@ -202,13 +215,13 @@ function updateProgress() {
     const current = player.getCurrentTime() || 0;
     const duration = player.getDuration() || 0;
 
-    $("seekBar").max = duration || 0;
+    $("seekBar").max = duration;
     $("seekBar").value = current;
 
     $("currentTime").textContent = formatTime(current);
     $("totalTime").textContent = formatTime(duration);
   } catch (error) {
-    console.warn("Progress update unavailable", error);
+    console.warn("Progress unavailable:", error);
   }
 }
 
@@ -278,18 +291,23 @@ function loadPlayer(videoId) {
       onError: event => {
         $("playingStatus").textContent = "UNAVAILABLE";
         $("searchStatus").textContent =
-          `YouTube cannot play this video here. Error ${event.data}`;
+          `YouTube playback error ${event.data}`;
       }
     }
   });
 }
 
-function playSong(song) {
-  if (!song?.id) return;
+function playSong(rawSong) {
+  const song = normalizeSong(rawSong);
+  if (!song) return;
 
-  $("currentTitle").textContent = song.title || "Unknown title";
-  $("currentChannel").textContent = song.channel || "YouTube";
+  $("currentTitle").textContent = song.title;
+  $("currentChannel").textContent = song.channel;
   $("videoPlaceholder").style.display = "none";
+
+  if (song.media_type === "video") {
+    applyPlaybackMode("video");
+  }
 
   loadPlayer(song.id);
 }
@@ -298,11 +316,11 @@ function playFromQueue(index) {
   if (index < 0 || index >= queue.length) return;
 
   currentIndex = index;
+  const song = normalizeSong(queue[index]);
 
-  const song = queue[index];
+  if (!song) return;
 
-  lastRoomSongId = song.id || null;
-
+  lastRoomSongId = song.id;
   playSong(song);
   renderQueue();
 }
@@ -311,13 +329,13 @@ function playNext() {
   if (!queue.length) return;
 
   if (shuffleEnabled && queue.length > 1) {
-    let nextIndex = currentIndex;
+    let next = currentIndex;
 
-    while (nextIndex === currentIndex) {
-      nextIndex = Math.floor(Math.random() * queue.length);
+    while (next === currentIndex) {
+      next = Math.floor(Math.random() * queue.length);
     }
 
-    playFromQueue(nextIndex);
+    playFromQueue(next);
     return;
   }
 
@@ -331,7 +349,8 @@ function playNext() {
 function playPrevious() {
   if (!queue.length) return;
 
-  if (player && player.getCurrentTime && player.getCurrentTime() > 3) {
+  if (player && player.getCurrentTime &&
+      player.getCurrentTime() > 3) {
     player.seekTo(0, true);
     return;
   }
@@ -349,12 +368,16 @@ $("videoModeButton")?.addEventListener("click", togglePlaybackMode);
 
 $("shuffleButton").addEventListener("click", () => {
   shuffleEnabled = !shuffleEnabled;
+
   $("shuffleButton").classList.toggle("active", shuffleEnabled);
-  $("shuffleButton").setAttribute("aria-pressed", String(shuffleEnabled));
+  $("shuffleButton").setAttribute(
+    "aria-pressed",
+    String(shuffleEnabled)
+  );
 });
 
 $("playPauseButton").addEventListener("click", () => {
-  if (!player || !player.getPlayerState) return;
+  if (!player || !window.YT) return;
 
   if (player.getPlayerState() === YT.PlayerState.PLAYING) {
     player.pauseVideo();
@@ -368,11 +391,13 @@ $("nextButton").addEventListener("click", playNext);
 
 $("seekBar").addEventListener("input", () => {
   isSeeking = true;
-  $("currentTime").textContent = formatTime(Number($("seekBar").value));
+
+  $("currentTime").textContent =
+    formatTime(Number($("seekBar").value));
 });
 
 $("seekBar").addEventListener("change", () => {
-  if (player && player.seekTo) {
+  if (player?.seekTo) {
     player.seekTo(Number($("seekBar").value), true);
   }
 
@@ -389,7 +414,7 @@ $("fullscreenButton").addEventListener("click", async () => {
     } else if (frame.webkitRequestFullscreen) {
       frame.webkitRequestFullscreen();
     } else {
-      alert("Use the YouTube player's full-screen control on this device.");
+      alert("Use the YouTube player's full-screen control.");
     }
   } catch (error) {
     console.error(error);
@@ -437,17 +462,22 @@ async function searchMusic() {
 
   try {
     const response = await fetch(
-      `${API_BASE}/search?q=${encodeURIComponent(query)}&limit=10`
+      `/search?q=${encodeURIComponent(query)}&limit=10`
     );
 
+    const data = await response.json();
+
     if (!response.ok) {
-      throw new Error(`Search error ${response.status}`);
+      throw new Error(data.detail || "Search failed");
     }
 
-    const data = await response.json();
-    searchResults = (data.results || []).slice(0, 10);
+    searchResults = (data.results || [])
+      .map(normalizeSong)
+      .filter(Boolean)
+      .slice(0, 10);
 
-    $("resultCount").textContent = `${searchResults.length} RESULTS`;
+    $("resultCount").textContent =
+      `${searchResults.length} RESULTS`;
 
     if (!searchResults.length) {
       $("searchStatus").textContent = "No songs found.";
@@ -456,9 +486,11 @@ async function searchMusic() {
 
     $("searchStatus").textContent = "";
     renderResults();
+
   } catch (error) {
     console.error(error);
-    $("searchStatus").textContent = `Search unavailable: ${error.message}`;
+    $("searchStatus").textContent =
+      `Search unavailable: ${error.message}`;
   }
 }
 
@@ -479,7 +511,7 @@ function renderResults() {
   const container = $("searchResults");
   container.innerHTML = "";
 
-  searchResults.slice(0, 10).forEach((song, index) => {
+  searchResults.forEach((song, index) => {
     const row = document.createElement("div");
     row.className = "song-row";
 
@@ -495,7 +527,7 @@ function renderResults() {
 
     const subtitle = document.createElement("p");
     subtitle.textContent =
-      `${song.channel || "YouTube"} · ${song.duration || "Unknown duration"}`;
+      `${song.channel} · ${song.duration || "Unknown duration"}`;
 
     details.append(title, subtitle);
 
@@ -504,22 +536,24 @@ function renderResults() {
 
     actions.append(
       makeIconButton(icons.play, "Play song", "primary", () => {
-        const existingIndex = queue.findIndex(item => item.id === song.id);
+        const index = queue.findIndex(item => item.id === song.id);
 
-        if (existingIndex === -1) {
+        if (index === -1) {
           queue.push(song);
-          saveQueue();
           currentIndex = queue.length - 1;
         } else {
-          currentIndex = existingIndex;
+          currentIndex = index;
         }
 
+        saveQueue();
         lastRoomSongId = song.id;
         playSong(song);
         renderQueue();
       }),
 
-      makeIconButton(icons.add, "Add to queue", "", () => addToQueue(song))
+      makeIconButton(icons.add, "Add to queue", "", () => {
+        addToQueue(song);
+      })
     );
 
     row.append(number, details, actions);
@@ -533,9 +567,12 @@ $("searchInput").addEventListener("keydown", event => {
   if (event.key === "Enter") searchMusic();
 });
 
-function addToQueue(song) {
+function addToQueue(rawSong) {
+  const song = normalizeSong(rawSong);
+  if (!song) return;
+
   if (queue.some(item => item.id === song.id)) {
-    $("searchStatus").textContent = "This song is already in your queue.";
+    $("searchStatus").textContent = "Already in queue.";
     return;
   }
 
@@ -543,7 +580,7 @@ function addToQueue(song) {
   saveQueue();
   renderQueue();
 
-  $("searchStatus").textContent = "Added to your queue.";
+  $("searchStatus").textContent = "Added to local queue.";
 }
 
 // -------------------------
@@ -560,7 +597,10 @@ function renderQueue() {
     return;
   }
 
-  queue.forEach((song, index) => {
+  queue.forEach((rawSong, index) => {
+    const song = normalizeSong(rawSong);
+    if (!song) return;
+
     const row = document.createElement("div");
     row.className = "song-row";
 
@@ -572,11 +612,11 @@ function renderQueue() {
     details.className = "song-details";
 
     const title = document.createElement("h3");
-    title.textContent = song.title || "Unknown title";
+    title.textContent = song.title;
 
     const subtitle = document.createElement("p");
     subtitle.textContent =
-      `${song.channel || "YouTube"} · ${song.duration || ""}`;
+      `${song.channel} · ${song.duration}`;
 
     details.append(title, subtitle);
 
@@ -584,30 +624,22 @@ function renderQueue() {
     actions.className = "song-actions";
 
     actions.append(
-      makeIconButton(
-        icons.play,
-        "Play song",
-        "primary",
-        () => playFromQueue(index)
-      ),
+      makeIconButton(icons.play, "Play song", "primary", () => {
+        playFromQueue(index);
+      }),
 
-      makeIconButton(
-        icons.remove,
-        "Remove from queue",
-        "danger",
-        () => {
-          queue.splice(index, 1);
+      makeIconButton(icons.remove, "Remove song", "danger", () => {
+        queue.splice(index, 1);
 
-          if (currentIndex === index) {
-            currentIndex = -1;
-          } else if (currentIndex > index) {
-            currentIndex--;
-          }
-
-          saveQueue();
-          renderQueue();
+        if (currentIndex === index) {
+          currentIndex = -1;
+        } else if (currentIndex > index) {
+          currentIndex--;
         }
-      )
+
+        saveQueue();
+        renderQueue();
+      })
     );
 
     if (index === currentIndex) {
@@ -644,6 +676,7 @@ async function loadPlaylists() {
       : data.playlists || [];
 
     renderPlaylists();
+
   } catch (error) {
     console.error(error);
 
@@ -651,7 +684,8 @@ async function loadPlaylists() {
 
     const message = document.createElement("div");
     message.className = "empty-state";
-    message.textContent = `Could not load playlists: ${error.message}`;
+    message.textContent =
+      `Could not load playlists: ${error.message}`;
 
     $("playlistList").appendChild(message);
   }
@@ -673,6 +707,7 @@ async function createPlaylist() {
 
     $("playlistName").value = "";
     await loadPlaylists();
+
   } catch (error) {
     alert(`Could not create playlist: ${error.message}`);
   }
@@ -682,11 +717,13 @@ async function deletePlaylist(playlistId) {
   if (!confirm("Delete this playlist?")) return;
 
   try {
-    await apiRequest(`/playlists/${encodeURIComponent(playlistId)}`, {
-      method: "DELETE"
-    });
+    await apiRequest(
+      `/playlists/${encodeURIComponent(playlistId)}`,
+      { method: "DELETE" }
+    );
 
     await loadPlaylists();
+
   } catch (error) {
     alert(`Could not delete playlist: ${error.message}`);
   }
@@ -711,6 +748,7 @@ async function saveQueueToPlaylist(playlistId) {
 
     await loadPlaylists();
     alert("Queue saved to playlist.");
+
   } catch (error) {
     alert(`Could not save queue: ${error.message}`);
   }
@@ -734,7 +772,8 @@ function renderPlaylists() {
     title.textContent = playlist.name;
 
     const count = document.createElement("p");
-    count.textContent = `${(playlist.songs || []).length} songs`;
+    count.textContent =
+      `${(playlist.songs || []).length} songs`;
 
     const actions = document.createElement("div");
     actions.className = "playlist-actions";
@@ -745,9 +784,9 @@ function renderPlaylists() {
     saveButton.title = "Save queue to playlist";
     saveButton.innerHTML = icons.playlist;
 
-    saveButton.addEventListener("click", () =>
-      saveQueueToPlaylist(playlist.playlist_id)
-    );
+    saveButton.addEventListener("click", () => {
+      saveQueueToPlaylist(playlist.playlist_id);
+    });
 
     const deleteButton = makeIconButton(
       icons.remove,
@@ -758,7 +797,6 @@ function renderPlaylists() {
 
     actions.append(saveButton, deleteButton);
     card.append(title, count, actions);
-
     container.appendChild(card);
   });
 }
@@ -770,7 +808,7 @@ $("playlistName").addEventListener("keydown", event => {
 });
 
 // -------------------------
-// TELEGRAM ROOM CONNECTION
+// TELEGRAM ROOM
 // -------------------------
 
 function getRoomId() {
@@ -781,8 +819,8 @@ function getRoomId() {
   }
 
   const params = new URLSearchParams(window.location.search);
-  const urlRoom = params.get("room");
 
+  const urlRoom = params.get("room");
   if (urlRoom) return urlRoom;
 
   const telegramParam = params.get("tgWebAppStartParam");
@@ -815,63 +853,56 @@ async function loadRoomQueue() {
       `/rooms/${encodeURIComponent(roomId)}`
     );
 
-    // Accept either {room: {...}} or a direct room response.
     const room = data.room || data;
 
-    if (data.success === false || !room) {
+    if (!room || data.success === false) {
       throw new Error("Room data unavailable.");
     }
 
-    const serverQueue = room.queue || [];
+    queue = Array.isArray(room.queue)
+      ? room.queue.map(normalizeSong).filter(Boolean)
+      : [];
 
-    if (!Array.isArray(serverQueue)) {
-      throw new Error("Invalid room queue.");
-    }
-
-    queue = serverQueue;
     saveQueue();
 
     const playback = room.playback || {};
-    const serverMode = playback.mode || "audio";
-    const updatedAt = playback.updated_at || null;
+    const currentSong = normalizeSong(room.current_song);
 
-    // Apply a mode update when the bot changes the room state.
-    if (updatedAt !== lastPlaybackUpdatedAt) {
-      applyPlaybackMode(serverMode);
-      lastPlaybackUpdatedAt = updatedAt;
-    }
-
-    const currentSong = room.current_song;
-
-    if (currentSong?.id) {
-      const index = queue.findIndex(
+    if (currentSong) {
+      currentIndex = queue.findIndex(
         song => song.id === currentSong.id
       );
 
-      currentIndex = index;
+      applyPlaybackMode(
+        currentSong.media_type ||
+        playback.mode ||
+        "audio"
+      );
 
-      // Only load a song when the room's current song changes.
       if (currentSong.id !== lastRoomSongId) {
         lastRoomSongId = currentSong.id;
 
-        const songToPlay = index >= 0
-          ? queue[index]
+        const song = currentIndex >= 0
+          ? queue[currentIndex]
           : currentSong;
 
-        playSong(songToPlay);
-        renderQueue();
+        playSong(song);
+      }
+
+    } else {
+      currentIndex = -1;
+      lastRoomSongId = null;
+
+      if (playback.mode) {
+        applyPlaybackMode(playback.mode);
       }
     }
 
     renderQueue();
 
-    if (queue.length > 0) {
-      $("searchStatus").textContent =
-        `${queue.length} songs loaded from room #${roomId}`;
-    } else {
-      $("searchStatus").textContent =
-        `Room #${roomId} is ready. Queue is empty.`;
-    }
+    $("searchStatus").textContent = queue.length
+      ? `${queue.length} songs loaded from room #${roomId}`
+      : `Room #${roomId} is ready. Queue is empty.`;
 
   } catch (error) {
     console.error("ROOM LOAD ERROR:", error);
@@ -887,9 +918,7 @@ function startRoomRefresh() {
   clearInterval(roomRefreshTimer);
 
   roomRefreshTimer = setInterval(() => {
-    if (!document.hidden) {
-      loadRoomQueue();
-    }
+    if (!document.hidden) loadRoomQueue();
   }, 4000);
 }
 
@@ -911,4 +940,7 @@ loadPlaylists();
 if (roomId) {
   loadRoomQueue();
   startRoomRefresh();
+} else {
+  $("searchStatus").textContent =
+    "Open TANANG MUSIC using a Telegram room button.";
 }
