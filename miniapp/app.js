@@ -9,7 +9,29 @@ if (tg) {
 const API_BASE = "";
 const INIT_DATA = tg?.initData || "";
 
+let currentPlayMode = "audio";
+let lastRoomSongId = null;
+
 const $ = id => document.getElementById(id);
+
+function applyPlaybackMode(mode) {
+    currentPlayMode = mode === "video" ? "video" : "audio";
+
+    const button = document.getElementById("videoModeButton");
+
+    if (button) {
+        button.textContent =
+            currentPlayMode === "audio"
+                ? "WATCH VIDEO"
+                : "SWITCH TO AUDIO";
+    }
+
+    document.body.classList.toggle(
+        "audio-mode",
+        currentPlayMode === "audio"
+    );
+}
+
 
 let player = null;
 let playerReady = false;
