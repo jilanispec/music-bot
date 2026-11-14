@@ -2,135 +2,111 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport"
-          content="width=device-width, initial-scale=1.0,
-          maximum-scale=1.0, user-scalable=no">
-
-    <title>VIBE Music</title>
-
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#080808">
+  <title>Tanang Music</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://www.youtube.com/iframe_api"></script>
 </head>
-
 <body>
 
-    <header class="topbar">
-        <div class="brand">VIBE<span>.</span></div>
-        <div class="room-badge" id="roomBadge">NO ROOM</div>
-    </header>
+<header class="topbar">
+  <div class="brand">TANANG <span>MUSIC</span></div>
+  <div class="room-badge" id="roomBadge">NO ROOM</div>
+</header>
 
-    <main>
+<main>
+  <section id="homePage" class="page active">
+    <div class="welcome">
+      <p class="eyebrow">YOUR MUSIC. YOUR VIBE.</p>
+      <h1>Discover music</h1>
+      <p>Find your favourite songs and videos.</p>
+    </div>
 
-        <section id="homePage" class="page active">
+    <div class="search-box">
+      <input id="searchInput" type="search"
+        placeholder="Search songs or videos...">
+      <button id="searchButton">SEARCH</button>
+    </div>
 
-            <div class="welcome">
-                <p class="eyebrow">YOUR PERSONAL MUSIC SPACE</p>
-                <h1>Feel the<br><span>Music.</span></h1>
-                <p id="welcomeText">Welcome to VIBE Music.</p>
-            </div>
+    <div id="searchStatus"></div>
+    <div id="searchResults"></div>
 
-            <div class="search-box">
-                <span>⌕</span>
-                <input
-                    id="searchInput"
-                    type="search"
-                    placeholder="Search songs, artists..."
-                >
-                <button id="searchButton">GO</button>
-            </div>
+    <section class="now-playing">
+      <div class="section-heading">
+        <h2>NOW PLAYING</h2>
+        <span class="live-dot"></span>
+      </div>
 
-            <div id="searchResults"></div>
+      <div id="youtubePlayer" class="youtube-player">
+        <div class="player-placeholder">
+          <span>♪</span>
+          <p>Select a song to play</p>
+        </div>
+      </div>
 
-            <section class="player-section">
-                <div class="section-heading">
-                    <h2>NOW PLAYING</h2>
-                    <span class="live-dot"></span>
-                </div>
+      <div class="track-info">
+        <h3 id="currentTitle">Nothing playing</h3>
+        <p id="currentChannel">Choose a song from search</p>
+      </div>
 
-                <div class="cover-placeholder">
-                    <div class="cover-icon">♫</div>
-                    <p>YOUR MUSIC</p>
-                </div>
+      <div class="player-actions">
+        <button id="previousButton" aria-label="Previous">|◀</button>
+        <button id="playPauseButton" class="play-button">▶</button>
+        <button id="nextButton" aria-label="Next">▶|</button>
+      </div>
+      <p class="player-note">
+        Playback is provided by the official YouTube embedded player.
+      </p>
+    </section>
+  </section>
 
-                <div class="track-info">
-                    <h2 id="trackTitle">Nothing playing</h2>
-                    <p id="trackArtist">Search for your favourite song</p>
-                </div>
+  <section id="queuePage" class="page">
+    <h1>Your Queue</h1>
+    <p class="muted">Songs selected on this device.</p>
+    <div id="queueList"></div>
+    <button id="clearQueueButton" class="secondary-button">
+      Clear queue
+    </button>
+  </section>
 
-                <div class="progress">
-                    <div class="progress-fill"></div>
-                </div>
+  <section id="libraryPage" class="page">
+    <h1>Your Library</h1>
+    <p class="muted">Create playlists and save songs on this device.</p>
+    <div class="playlist-create">
+      <input id="playlistName" placeholder="Playlist name">
+      <button id="createPlaylist">CREATE</button>
+    </div>
+    <div id="playlistList"></div>
+  </section>
 
-                <div class="player-controls">
-                    <button aria-label="Previous">◀</button>
-                    <button class="play-button" aria-label="Play">▶</button>
-                    <button aria-label="Next">▶|</button>
-                </div>
-            </section>
+  <section id="settingsPage" class="page">
+    <h1>Settings</h1>
+    <div class="settings-card">
+      <h3>TANANG MUSIC</h3>
+      <p>Version 2.0</p>
+      <p id="settingsRoom">No active room connected.</p>
+    </div>
+  </section>
+</main>
 
-        </section>
+<nav class="bottom-nav">
+  <button class="nav-item active" data-page="homePage">
+    <span>⌂</span>Home
+  </button>
+  <button class="nav-item" data-page="queuePage">
+    <span>♫</span>Queue
+  </button>
+  <button class="nav-item" data-page="libraryPage">
+    <span>▤</span>Library
+  </button>
+  <button class="nav-item" data-page="settingsPage">
+    <span>⚙</span>Settings
+  </button>
+</nav>
 
-        <section id="queuePage" class="page">
-            <p class="eyebrow">UP NEXT</p>
-            <h1>Your <span>Queue.</span></h1>
-            <div id="queueList" class="empty-state">
-                No songs in the queue yet.
-            </div>
-        </section>
-
-        <section id="libraryPage" class="page">
-            <p class="eyebrow">YOUR COLLECTION</p>
-            <h1>My <span>Library.</span></h1>
-
-            <button class="action-card" id="createPlaylist">
-                <span>＋</span>
-                Create new playlist
-            </button>
-
-            <div id="playlistList" class="empty-state">
-                Your playlists will appear here.
-            </div>
-        </section>
-
-        <section id="settingsPage" class="page">
-            <p class="eyebrow">MAKE IT YOURS</p>
-            <h1>Settings<span>.</span></h1>
-
-            <div class="settings-card">
-                <h3>Current Theme</h3>
-                <p>Black + Yellow</p>
-                <span class="theme-preview"></span>
-            </div>
-
-            <div class="settings-card">
-                <h3>Room</h3>
-                <p id="settingsRoom">No active room</p>
-            </div>
-        </section>
-
-    </main>
-
-    <nav class="bottom-nav">
-        <button class="nav-item active" data-page="homePage">
-            <span>⌂</span>Home
-        </button>
-
-        <button class="nav-item" data-page="queuePage">
-            <span>☷</span>Queue
-        </button>
-
-        <button class="nav-item" data-page="libraryPage">
-            <span>♫</span>Library
-        </button>
-
-        <button class="nav-item" data-page="settingsPage">
-            <span>⚙</span>Settings
-        </button>
-    </nav>
-
-    <script src="app.js"></script>
-
+<script src="app.js"></script>
 </body>
 </html>
