@@ -8,7 +8,7 @@ if (tg) {
     tg.setBackgroundColor("#080808");
 }
 
-const API_BASE = "/api";
+const API_BASE = "";
 
 const user = tg?.initDataUnsafe?.user;
 
