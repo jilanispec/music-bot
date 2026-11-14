@@ -1,118 +1,111 @@
 
-from storage.github_json import read_json, write_json
-from storage.schemas import new_user, new_playlist, new_room
 from datetime import datetime, timezone
 import uuid
+
+from storage.github_json import read_json, update_json
+from storage.schemas import new_user, new_playlist, new_room
 
 
 def timestamp():
     return datetime.now(timezone.utc).isoformat()
 
 
-# ---------------- USERS ----------------
-
 async def get_user(user_id, username=None):
-    users = await read_json("database/users.json", {})
+    def mutate(users):
+        key = str(user_id)
+        if key not in users:
+            users[key] = new_user(user_id, username)
+        return users[key]
 
-    key = str(user_id)
+    from storage.github_json import update_json
 
-    if key not in users:
-        users[key] = new_user(user_id, username)
-        await write_json("database/users.json", users)
+    return await update_json("database/users.json", {}, mutate)
 
-    return users[key]
-
-
-# ---------------- PLAYLISTS ----------------
 
 async def create_playlist(user_id, name):
-    playlists = await read_json("database/playlists.json", {})
-
     playlist_id = uuid.uuid4().hex[:12]
+    playlist = new_playlist(playlist_id, user_id, name)
 
-    playlist = new_playlist(
-        playlist_id,
-        user_id,
-        name
-    )
+    def mutate(playlists):
+        playlists[playlist_id] = playlist
+        return playlist
 
-    playlists[playlist_id] = playlist
-
-    await write_json("database/playlists.json", playlists)
-
-    return playlist
+    return await update_json("database/playlists.json", {}, mutate)
 
 
 async def get_playlists(user_id):
     playlists = await read_json("database/playlists.json", {})
 
     return [
-        playlist
-        for playlist in playlists.values()
-        if playlist["user_id"] == str(user_id)
+        item for item in playlists.values()
+        if item.get("user_id") == str(user_id)
     ]
 
 
 async def add_playlist_song(playlist_id, user_id, song):
-    playlists = await read_json("database/playlists.json", {})
+    def mutate(playlists):
+        playlist = playlists.get(str(playlist_id))
 
-    playlist = playlists.get(str(playlist_id))
+        if not playlist or playlist["user_id"] != str(user_id):
+            return None
 
-    if not playlist or playlist["user_id"] != str(user_id):
-        return None
+        playlist.setdefault("songs", []).append(song)
+        playlist["updated_at"] = timestamp()
+        return playlist
 
-    playlist["songs"].append(song)
-    playlist["updated_at"] = timestamp()
-
-    await write_json("database/playlists.json", playlists)
-
-    return playlist
+    return await update_json("database/playlists.json", {}, mutate)
 
 
 async def delete_playlist(playlist_id, user_id):
-    playlists = await read_json("database/playlists.json", {})
+    def mutate(playlists):
+        playlist = playlists.get(str(playlist_id))
 
-    playlist = playlists.get(str(playlist_id))
+        if not playlist or playlist["user_id"] != str(user_id):
+            return False
 
-    if not playlist or playlist["user_id"] != str(user_id):
-        return False
+        del playlists[str(playlist_id)]
+        return True
 
-    del playlists[str(playlist_id)]
+    return await update_json("database/playlists.json", {}, mutate)
 
-    await write_json("database/playlists.json", playlists)
-
-    return True
-
-
-# ---------------- ROOMS ----------------
 
 async def create_room(chat_id, host_id):
-    rooms = await read_json("database/rooms.json", {})
-    counter = await read_json(
-        "database/counter.json",
-        {"last_room_number": 0}
-    )
+    def mutate(rooms):
+        room = rooms.get(str(chat_id))
 
-    chat_key = str(chat_id)
+        if room and room.get("status") == "active":
+            return room
 
-    existing = rooms.get(chat_key)
+        # Counter is handled separately below.
+        return None
 
-    if existing and existing.get("status") == "active":
+    existing = await get_room(chat_id)
+    if existing:
         return existing
 
-    number = int(counter.get("last_room_number", 0)) + 1
-    counter["last_room_number"] = number
+    def next_counter(counter):
+        counter["last_room_number"] = (
+            int(counter.get("last_room_number", 0)) + 1
+        )
+        return counter["last_room_number"]
 
-    room_id = f"{number:04d}"
+    number = await update_json(
+        "database/counter.json",
+        {"last_room_number": 0},
+        next_counter
+    )
 
-    room = new_room(room_id, chat_id, host_id)
+    room = new_room(f"{number:04d}", chat_id, host_id)
 
-    rooms[chat_key] = room
+    def save_room(rooms):
+        existing_room = rooms.get(str(chat_id))
+        if existing_room and existing_room.get("status") == "active":
+            return existing_room
 
-    await write_json("database/counter.json", counter)
-    await write_json("database/rooms.json", rooms)
+        rooms[str(chat_id)] = room
+        return room
 
-    return room
+    return await update_json("database/rooms.json", {}, save_room)
 
 
 async def get_room(chat_id):
@@ -126,51 +119,51 @@ async def get_room(chat_id):
 
 
 async def add_room_song(chat_id, song, requested_by):
-    rooms = await read_json("database/rooms.json", {})
-    room = rooms.get(str(chat_id))
+    def mutate(rooms):
+        room = rooms.get(str(chat_id))
 
-    if not room or room.get("status") != "active":
-        return None
+        if not room or room.get("status") != "active":
+            return None
 
-    song_data = {
-        **song,
-        "requested_by": str(requested_by)
-    }
+        song_data = {
+            **song,
+            "requested_by": str(requested_by)
+        }
 
-    room.setdefault("queue", []).append(song_data)
+        room.setdefault("queue", []).append(song_data)
+        return len(room["queue"])
 
-    await write_json("database/rooms.json", rooms)
-
-    return len(room["queue"])
+    return await update_json("database/rooms.json", {}, mutate)
 
 
 async def skip_room_song(chat_id):
-    rooms = await read_json("database/rooms.json", {})
-    room = rooms.get(str(chat_id))
+    def mutate(rooms):
+        room = rooms.get(str(chat_id))
 
-    if not room or not room.get("queue"):
-        return None
+        if not room or room.get("status") != "active":
+            return None
 
-    skipped = room["queue"].pop(0)
-    room["current_song"] = (
-        room["queue"][0] if room["queue"] else None
-    )
+        queue = room.setdefault("queue", [])
 
-    await write_json("database/rooms.json", rooms)
+        if not queue:
+            return None
 
-    return skipped
+        skipped = queue.pop(0)
+        room["current_song"] = queue[0] if queue else None
+        return skipped
+
+    return await update_json("database/rooms.json", {}, mutate)
 
 
 async def close_room(chat_id):
-    rooms = await read_json("database/rooms.json", {})
-    room = rooms.get(str(chat_id))
+    def mutate(rooms):
+        room = rooms.get(str(chat_id))
 
-    if not room:
-        return False
+        if not room or room.get("status") != "active":
+            return False
 
-    room["status"] = "closed"
-    room["closed_at"] = timestamp()
+        room["status"] = "closed"
+        room["closed_at"] = timestamp()
+        return True
 
-    await write_json("database/rooms.json", rooms)
-
-    return True
+    return await update_json("database/rooms.json", {}, mutate)
