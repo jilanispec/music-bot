@@ -201,7 +201,14 @@ function playFromQueue(index) {
   if (index < 0 || index >= queue.length) return;
 
   currentIndex = index;
-  playSong(queue[index]);
+
+  const song = queue[index];
+
+  $("currentTitle").textContent = song.title || "Unknown title";
+  $("currentChannel").textContent = song.channel || "YouTube";
+  $("playingStatus").textContent = "LOADING";
+
+  playSong(song);
   renderQueue();
 }
 
@@ -434,7 +441,8 @@ function renderQueue() {
   container.innerHTML = "";
 
   if (!queue.length) {
-    container.innerHTML = '<div class="empty-state">Your queue is empty.</div>';
+    container.innerHTML =
+      '<div class="empty-state">Your queue is empty.</div>';
     return;
   }
 
@@ -450,10 +458,11 @@ function renderQueue() {
     details.className = "song-details";
 
     const title = document.createElement("h3");
-    title.textContent = song.title;
+    title.textContent = song.title || "Unknown title";
 
     const subtitle = document.createElement("p");
-    subtitle.textContent = song.channel || "YouTube";
+    subtitle.textContent =
+      `${song.channel || "YouTube"} · ${song.duration || ""}`;
 
     details.append(title, subtitle);
 
@@ -461,17 +470,34 @@ function renderQueue() {
     actions.className = "song-actions";
 
     actions.append(
-      makeIconButton(icons.play, "Play song", "primary", () => playFromQueue(index)),
-      makeIconButton(icons.remove, "Remove from queue", "danger", () => {
-        queue.splice(index, 1);
+      makeIconButton(
+        icons.play,
+        "Play song",
+        "primary",
+        () => playFromQueue(index)
+      ),
+      makeIconButton(
+        icons.remove,
+        "Remove from queue",
+        "danger",
+        () => {
+          queue.splice(index, 1);
 
-        if (currentIndex === index) currentIndex = -1;
-        else if (currentIndex > index) currentIndex--;
+          if (currentIndex === index) {
+            currentIndex = -1;
+          } else if (currentIndex > index) {
+            currentIndex--;
+          }
 
-        saveQueue();
-        renderQueue();
-      })
+          saveQueue();
+          renderQueue();
+        }
+      )
     );
+
+    if (index === currentIndex) {
+      row.classList.add("playing");
+    }
 
     row.append(number, details, actions);
     container.appendChild(row);
