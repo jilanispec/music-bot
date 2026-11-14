@@ -12,6 +12,8 @@ const INIT_DATA = tg?.initData || "";
 let player = null;
 let playerReady = false;
 let currentIndex = -1;
+let isSeeking = false;
+let progressTimer = null;
 
 let queue = JSON.parse(localStorage.getItem("tanang_queue") || "[]");
 let playlists = [];
@@ -26,17 +28,10 @@ function authHeaders() {
   };
 }
 
-function saveQueue() {
-  localStorage.setItem("tanang_queue", JSON.stringify(queue));
-}
-
 async function apiRequest(path, options = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
-    headers: {
-      ...authHeaders(),
-      ...(options.headers || {})
-    }
+    headers: { ...authHeaders(), ...(options.headers || {}) }
   });
 
   const data = await response.json().catch(() => ({}));
@@ -46,6 +41,10 @@ async function apiRequest(path, options = {}) {
   }
 
   return data;
+}
+
+function saveQueue() {
+  localStorage.setItem("tanang_queue", JSON.stringify(queue));
 }
 
 function showPage(pageId) {
@@ -67,6 +66,38 @@ window.onYouTubeIframeAPIReady = function () {
   playerReady = true;
 };
 
+function formatTime(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${String(secs).padStart(2, "0")}`;
+}
+
+function updateProgress() {
+  if (!player || isSeeking) return;
+
+  try {
+    const current = player.getCurrentTime() || 0;
+    const duration = player.getDuration() || 0;
+
+    const bar = $("seekBar");
+    if (bar) {
+      bar.max = duration || 0;
+      bar.value = current;
+    }
+
+    if ($("currentTime")) $("currentTime").textContent = formatTime(current);
+    if ($("totalTime")) $("totalTime").textContent = formatTime(duration);
+  } catch (error) {
+    console.warn("Progress update unavailable", error);
+  }
+}
+
+function startProgressTimer() {
+  clearInterval(progressTimer);
+  progressTimer = setInterval(updateProgress, 500);
+}
+
 function loadPlayer(videoId) {
   if (!playerReady) {
     $("searchStatus").textContent = "Player is loading. Try again shortly.";
@@ -75,6 +106,7 @@ function loadPlayer(videoId) {
 
   if (player && typeof player.loadVideoById === "function") {
     player.loadVideoById(videoId);
+    startProgressTimer();
     return;
   }
 
@@ -84,19 +116,28 @@ function loadPlayer(videoId) {
       playsinline: 1,
       controls: 1,
       rel: 0,
+      fs: 1,
+      enablejsapi: 1,
       origin: window.location.origin
     },
     events: {
-      onReady: event => event.target.playVideo(),
+      onReady: event => {
+        event.target.playVideo();
+        startProgressTimer();
+      },
       onStateChange: event => {
-        $("playPauseButton").textContent =
-          event.data === YT.PlayerState.PLAYING ? "Ⅱ" : "▶";
+        const playing = event.data === YT.PlayerState.PLAYING;
+
+        if ($("playPauseButton")) {
+          $("playPauseButton").textContent = playing ? "Ⅱ" : "▶";
+        }
 
         if (event.data === YT.PlayerState.ENDED) playNext();
+        updateProgress();
       },
       onError: event => {
         $("searchStatus").textContent =
-          `This video cannot be played here. Error: ${event.data}`;
+          `This video cannot be played here. YouTube error: ${event.data}`;
       }
     }
   });
@@ -116,18 +157,41 @@ function playFromQueue(index) {
 
   currentIndex = index;
   playSong(queue[index]);
+  renderQueue();
 }
 
 function playNext() {
+  if (!queue.length) return;
+
+  if (shuffleEnabled && queue.length > 1) {
+    let next;
+    do {
+      next = Math.floor(Math.random() * queue.length);
+    } while (next === currentIndex);
+
+    playFromQueue(next);
+    return;
+  }
+
   if (currentIndex + 1 < queue.length) {
     playFromQueue(currentIndex + 1);
   }
 }
 
 function playPrevious() {
-  if (currentIndex > 0) {
-    playFromQueue(currentIndex - 1);
-  }
+  if (currentIndex > 0) playFromQueue(currentIndex - 1);
+}
+
+let shuffleEnabled = false;
+
+const shuffleButton = $("shuffleButton");
+
+if (shuffleButton) {
+  shuffleButton.addEventListener("click", () => {
+    shuffleEnabled = !shuffleEnabled;
+    shuffleButton.classList.toggle("active", shuffleEnabled);
+    shuffleButton.textContent = shuffleEnabled ? "🔀 ON" : "🔀";
+  });
 }
 
 $("playPauseButton").addEventListener("click", () => {
@@ -143,6 +207,49 @@ $("playPauseButton").addEventListener("click", () => {
 $("nextButton").addEventListener("click", playNext);
 $("previousButton").addEventListener("click", playPrevious);
 
+// Seek bar
+const seekBar = $("seekBar");
+
+if (seekBar) {
+  seekBar.addEventListener("input", () => {
+    isSeeking = true;
+    if ($("currentTime")) {
+      $("currentTime").textContent = formatTime(Number(seekBar.value));
+    }
+  });
+
+  seekBar.addEventListener("change", () => {
+    if (player && typeof player.seekTo === "function") {
+      player.seekTo(Number(seekBar.value), true);
+    }
+    isSeeking = false;
+    updateProgress();
+  });
+}
+
+// Full-screen
+const fullscreenButton = $("fullscreenButton");
+
+if (fullscreenButton) {
+  fullscreenButton.addEventListener("click", async () => {
+    const frame = $("youtubePlayer");
+    const iframe = frame?.querySelector("iframe");
+
+    try {
+      if (iframe?.requestFullscreen) {
+        await iframe.requestFullscreen();
+      } else if (frame?.requestFullscreen) {
+        await frame.requestFullscreen();
+      } else {
+        alert("Full-screen is not supported by this device.");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("YouTube controls may be needed for full-screen.");
+    }
+  });
+}
+
 // Search
 async function searchMusic() {
   const query = $("searchInput").value.trim();
@@ -157,13 +264,13 @@ async function searchMusic() {
 
   try {
     const response = await fetch(
-      `${API_BASE}/search?q=${encodeURIComponent(query)}`
+      `${API_BASE}/search?q=${encodeURIComponent(query)}&limit=10`
     );
 
     if (!response.ok) throw new Error(`Search error ${response.status}`);
 
     const data = await response.json();
-    searchResults = data.results || [];
+    searchResults = (data.results || []).slice(0, 10);
 
     if (!searchResults.length) {
       $("searchStatus").textContent = "No results found.";
@@ -209,11 +316,11 @@ function renderResults() {
       if (!queue.some(item => item.id === song.id)) {
         queue.push(song);
         saveQueue();
-        renderQueue();
       }
 
       currentIndex = queue.findIndex(item => item.id === song.id);
       playSong(song);
+      renderQueue();
     });
 
     const addButton = document.createElement("button");
@@ -290,7 +397,7 @@ $("clearQueueButton").addEventListener("click", () => {
   renderQueue();
 });
 
-// Permanent playlists: GitHub JSON API
+// Permanent playlists
 async function loadPlaylists() {
   $("playlistList").textContent = "Loading playlists...";
 
@@ -300,8 +407,7 @@ async function loadPlaylists() {
     renderPlaylists();
   } catch (error) {
     console.error(error);
-    $("playlistList").textContent =
-      `Could not load playlists: ${error.message}`;
+    $("playlistList").textContent = `Could not load playlists: ${error.message}`;
   }
 }
 
@@ -333,7 +439,6 @@ async function deletePlaylist(playlistId) {
     await apiRequest(`/playlists/${encodeURIComponent(playlistId)}`, {
       method: "DELETE"
     });
-
     await loadPlaylists();
   } catch (error) {
     alert(`Could not delete playlist: ${error.message}`);
@@ -348,13 +453,10 @@ async function saveQueueToPlaylist(playlistId) {
 
   try {
     for (const song of queue) {
-      await apiRequest(
-        `/playlists/${encodeURIComponent(playlistId)}/songs`,
-        {
-          method: "POST",
-          body: JSON.stringify({ song })
-        }
-      );
+      await apiRequest(`/playlists/${encodeURIComponent(playlistId)}/songs`, {
+        method: "POST",
+        body: JSON.stringify({ song })
+      });
     }
 
     await loadPlaylists();
@@ -403,7 +505,7 @@ function renderPlaylists() {
 
 $("createPlaylist").addEventListener("click", createPlaylist);
 
-// Room display
+// Room label
 const params = new URLSearchParams(window.location.search);
 const roomId = params.get("room");
 
