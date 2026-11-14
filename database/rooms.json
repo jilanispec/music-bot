@@ -66,6 +66,17 @@
         "url": "https://www.youtube.com/watch?v=iZAv9zDeFSc",
         "requested_by": "2079655933",
         "media_type": "music"
+      },
+      {
+        "id": "iZAv9zDeFSc",
+        "title": "Dulhe Ka Sehra | #AkshayKumar &amp; #ShilpaShetty | Dhadkan | Ishtar Music",
+        "channel": "Ishtar Music",
+        "thumbnail": "https://i.ytimg.com/vi/iZAv9zDeFSc/hqdefault.jpg",
+        "duration": "7:49",
+        "duration_seconds": 469,
+        "url": "https://www.youtube.com/watch?v=iZAv9zDeFSc",
+        "requested_by": "2079655933",
+        "media_type": "music"
       }
     ],
     "participants": [],
@@ -73,7 +84,7 @@
     "playback": {
       "state": "paused",
       "position": 0,
-      "updated_at": "2026-11-14T15:58:27.410855+00:00",
+      "updated_at": "2026-11-14T16:08:07.771653+00:00",
       "mode": "audio"
     }
   }
