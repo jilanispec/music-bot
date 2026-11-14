@@ -7,7 +7,6 @@ from urllib.parse import quote
 
 import aiohttp
 
-
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_REPO = os.getenv("GITHUB_REPO", "jilanispec/music-bot")
 GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
@@ -22,105 +21,165 @@ def get_lock(path):
     return LOCKS[path]
 
 
-async def read_json(path, default=None):
-    if default is None:
-        default = {}
-
+def headers():
     if not GITHUB_TOKEN:
         raise RuntimeError("GITHUB_TOKEN is missing")
 
-    url = f"{BASE_URL}/{GITHUB_REPO}/contents/{quote(path)}"
-
-    headers = {
+    return {
         "Authorization": f"Bearer {GITHUB_TOKEN}",
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28"
     }
 
-    params = {"ref": GITHUB_BRANCH}
 
-    async with aiohttp.ClientSession() as session:
-        async with session.get(
-            url, headers=headers, params=params
-        ) as response:
+async def fetch_file(session, path):
+    url = (
+        f"{BASE_URL}/{GITHUB_REPO}/contents/"
+        f"{quote(path, safe='/')}"
+    )
 
-            if response.status == 404:
-                return default
+    async with session.get(
+        url,
+        headers=headers(),
+        params={"ref": GITHUB_BRANCH}
+    ) as response:
 
-            if response.status != 200:
-                raise RuntimeError(
-                    f"GitHub read failed: {response.status}"
-                )
+        if response.status == 404:
+            return {}, None
 
-            data = await response.json()
-            content = base64.b64decode(
-                data["content"]
-            ).decode("utf-8")
+        if response.status != 200:
+            raise RuntimeError(
+                f"GitHub read failed: {response.status}"
+            )
 
-            return json.loads(content)
+        result = await response.json()
+        raw = base64.b64decode(
+            result["content"]
+        ).decode("utf-8")
+
+        return json.loads(raw), result["sha"]
+
+
+async def read_json(path, default=None):
+    if default is None:
+        default = {}
+
+    timeout = aiohttp.ClientTimeout(total=20)
+
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        data, sha = await fetch_file(session, path)
+
+    return data if sha else default
 
 
 async def write_json(path, data):
-    if not GITHUB_TOKEN:
-        raise RuntimeError("GITHUB_TOKEN is missing")
-
     async with get_lock(path):
-        url = f"{BASE_URL}/{GITHUB_REPO}/contents/{quote(path)}"
+        timeout = aiohttp.ClientTimeout(total=25)
 
-        headers = {
-            "Authorization": f"Bearer {GITHUB_TOKEN}",
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28"
-        }
-
-        async with aiohttp.ClientSession() as session:
-
-            # Get the current file SHA.
-            async with session.get(
-                url,
-                headers=headers,
-                params={"ref": GITHUB_BRANCH}
-            ) as response:
-
-                if response.status == 200:
-                    existing = await response.json()
-                    sha = existing["sha"]
-                elif response.status == 404:
-                    sha = None
-                else:
-                    raise RuntimeError(
-                        f"GitHub SHA lookup failed: {response.status}"
-                    )
-
-            content = json.dumps(
-                data,
-                indent=2,
-                ensure_ascii=False
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            url = (
+                f"{BASE_URL}/{GITHUB_REPO}/contents/"
+                f"{quote(path, safe='/')}"
             )
 
-            encoded = base64.b64encode(
-                content.encode("utf-8")
-            ).decode("ascii")
+            for attempt in range(4):
+                current, sha = await fetch_file(session, path)
 
-            payload = {
-                "message": f"Update {path}",
-                "content": encoded,
-                "branch": GITHUB_BRANCH
-            }
+                encoded = base64.b64encode(
+                    json.dumps(
+                        data,
+                        indent=2,
+                        ensure_ascii=False
+                    ).encode("utf-8")
+                ).decode("ascii")
 
-            if sha:
-                payload["sha"] = sha
+                payload = {
+                    "message": f"Update {path}",
+                    "content": encoded,
+                    "branch": GITHUB_BRANCH
+                }
 
-            async with session.put(
-                url,
-                headers=headers,
-                json=payload
-            ) as response:
+                if sha:
+                    payload["sha"] = sha
 
-                if response.status not in (200, 201):
+                async with session.put(
+                    url,
+                    headers=headers(),
+                    json=payload
+                ) as response:
+
+                    if response.status in (200, 201):
+                        return await response.json()
+
                     error = await response.text()
+
+                    if response.status in (409, 422) and attempt < 3:
+                        await asyncio.sleep(0.5 * (attempt + 1))
+                        continue
+
                     raise RuntimeError(
-                        f"GitHub write failed: {error}"
+                        f"GitHub write failed: {response.status}: {error}"
                     )
 
-                return await response.json()
+            raise RuntimeError("GitHub write conflict. Try again.")
+
+
+async def update_json(path, default, mutator):
+    """
+    Read, modify and save one JSON file.
+    Retries if another GitHub commit changes the file first.
+    """
+    async with get_lock(path):
+        timeout = aiohttp.ClientTimeout(total=25)
+
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            url = (
+                f"{BASE_URL}/{GITHUB_REPO}/contents/"
+                f"{quote(path, safe='/')}"
+            )
+
+            for attempt in range(4):
+                data, sha = await fetch_file(session, path)
+
+                if sha is None:
+                    data = json.loads(json.dumps(default))
+
+                result = mutator(data)
+
+                encoded = base64.b64encode(
+                    json.dumps(
+                        data,
+                        indent=2,
+                        ensure_ascii=False
+                    ).encode("utf-8")
+                ).decode("ascii")
+
+                payload = {
+                    "message": f"Update {path}",
+                    "content": encoded,
+                    "branch": GITHUB_BRANCH
+                }
+
+                if sha:
+                    payload["sha"] = sha
+
+                async with session.put(
+                    url,
+                    headers=headers(),
+                    json=payload
+                ) as response:
+
+                    if response.status in (200, 201):
+                        return result
+
+                    error = await response.text()
+
+                    if response.status in (409, 422) and attempt < 3:
+                        await asyncio.sleep(0.5 * (attempt + 1))
+                        continue
+
+                    raise RuntimeError(
+                        f"GitHub update failed: {response.status}: {error}"
+                    )
+
+            raise RuntimeError("GitHub update conflict. Try again.")
