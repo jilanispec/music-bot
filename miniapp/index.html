@@ -5,108 +5,167 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#080808">
-  <title>Tanang Music</title>
-  <link rel="stylesheet" href="style.css">
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="https://www.youtube.com/iframe_api"></script>
+  <title>TANANG MUSIC</title>
+  <link rel="stylesheet" href="/style.css">
 </head>
+
 <body>
-
-<header class="topbar">
-  <div class="brand">TANANG <span>MUSIC</span></div>
-  <div class="room-badge" id="roomBadge">NO ROOM</div>
-</header>
-
-<main>
-  <section id="homePage" class="page active">
-    <div class="welcome">
-      <p class="eyebrow">YOUR MUSIC. YOUR VIBE.</p>
-      <h1>Discover music</h1>
-      <p>Find your favourite songs and videos.</p>
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-icon">♫</span>
+      <div>
+        <h1>TANANG <span>MUSIC</span></h1>
+        <p>Your music. Your vibe.</p>
+      </div>
     </div>
+    <div id="roomBadge" class="room-badge">PERSONAL</div>
+  </header>
 
-    <div class="search-box">
-      <input id="searchInput" type="search"
-        placeholder="Search songs or videos...">
-      <button id="searchButton">SEARCH</button>
-    </div>
-
-    <div id="searchStatus"></div>
-    <div id="searchResults"></div>
-
-    <section class="now-playing">
+  <main>
+    <!-- HOME / PLAYER -->
+    <section class="page active" id="homePage">
       <div class="section-heading">
         <h2>NOW PLAYING</h2>
-        <span class="live-dot"></span>
+        <span class="live-indicator">● PLAYER</span>
       </div>
 
-      <div id="youtubePlayer" class="youtube-player">
-        <div class="player-placeholder">
-          <span>♪</span>
-          <p>Select a song to play</p>
+      <div class="player-card">
+        <div id="youtubePlayer"></div>
+
+        <div class="track-details">
+          <h2 id="currentTitle">Nothing playing</h2>
+          <p id="currentChannel">Search and play your favourite music</p>
+        </div>
+
+        <div class="player-progress">
+          <span id="currentTime">0:00</span>
+          <input
+            id="seekBar"
+            type="range"
+            min="0"
+            max="100"
+            value="0"
+            aria-label="Video progress"
+          >
+          <span id="totalTime">0:00</span>
+        </div>
+
+        <div class="player-buttons">
+          <button id="shuffleButton" aria-label="Shuffle">🔀</button>
+          <button id="previousButton" aria-label="Previous">|◀</button>
+          <button id="playPauseButton" aria-label="Play or pause">▶</button>
+          <button id="nextButton" aria-label="Next">▶|</button>
+          <button id="fullscreenButton" aria-label="Full screen">⛶</button>
         </div>
       </div>
 
-      <div class="track-info">
-        <h3 id="currentTitle">Nothing playing</h3>
-        <p id="currentChannel">Choose a song from search</p>
+      <div class="section-heading">
+        <h2>QUICK SEARCH</h2>
       </div>
 
-      <div class="player-actions">
-        <button id="previousButton" aria-label="Previous">|◀</button>
-        <button id="playPauseButton" class="play-button">▶</button>
-        <button id="nextButton" aria-label="Next">▶|</button>
+      <div class="search-box">
+        <input
+          id="searchInput"
+          type="search"
+          placeholder="Search songs, artists, albums..."
+        >
+        <button id="searchButton">SEARCH</button>
       </div>
-      <p class="player-note">
-        Playback is provided by the official YouTube embedded player.
-      </p>
+
+      <p id="searchStatus" class="status-text"></p>
+      <div id="searchResults"></div>
     </section>
-  </section>
 
-  <section id="queuePage" class="page">
-    <h1>Your Queue</h1>
-    <p class="muted">Songs selected on this device.</p>
-    <div id="queueList"></div>
-    <button id="clearQueueButton" class="secondary-button">
-      Clear queue
+    <!-- SEARCH PAGE -->
+    <section class="page" id="searchPage">
+      <div class="section-heading">
+        <h2>DISCOVER MUSIC</h2>
+      </div>
+
+      <div class="search-box">
+        <input
+          id="searchInputAlt"
+          type="search"
+          placeholder="Search music..."
+        >
+        <button id="searchButtonAlt">SEARCH</button>
+      </div>
+
+      <p id="searchStatusAlt" class="status-text"></p>
+      <div id="searchResultsAlt"></div>
+    </section>
+
+    <!-- QUEUE -->
+    <section class="page" id="queuePage">
+      <div class="section-heading">
+        <h2>YOUR QUEUE</h2>
+        <button id="clearQueueButton" class="small-button">CLEAR</button>
+      </div>
+
+      <div id="queueList"></div>
+    </section>
+
+    <!-- PLAYLISTS -->
+    <section class="page" id="playlistsPage">
+      <div class="section-heading">
+        <h2>YOUR PLAYLISTS</h2>
+      </div>
+
+      <div class="create-playlist-box">
+        <input
+          id="playlistName"
+          type="text"
+          placeholder="Enter playlist name"
+          maxlength="50"
+        >
+        <button id="createPlaylist">CREATE</button>
+      </div>
+
+      <div id="playlistList"></div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="page" id="settingsPage">
+      <div class="section-heading">
+        <h2>SETTINGS</h2>
+      </div>
+
+      <div class="settings-card">
+        <h3>TANANG MUSIC</h3>
+        <p>Music inside Telegram.</p>
+        <p id="settingsRoom">Personal room</p>
+      </div>
+    </section>
+  </main>
+
+  <nav class="bottom-navigation">
+    <button class="nav-item active" data-page="homePage">
+      <span>⌂</span>
+      HOME
     </button>
-  </section>
 
-  <section id="libraryPage" class="page">
-    <h1>Your Library</h1>
-    <p class="muted">Create playlists and save songs on this device.</p>
-    <div class="playlist-create">
-      <input id="playlistName" placeholder="Playlist name">
-      <button id="createPlaylist">CREATE</button>
-    </div>
-    <div id="playlistList"></div>
-  </section>
+    <button class="nav-item" data-page="searchPage">
+      <span>⌕</span>
+      SEARCH
+    </button>
 
-  <section id="settingsPage" class="page">
-    <h1>Settings</h1>
-    <div class="settings-card">
-      <h3>TANANG MUSIC</h3>
-      <p>Version 2.0</p>
-      <p id="settingsRoom">No active room connected.</p>
-    </div>
-  </section>
-</main>
+    <button class="nav-item" data-page="queuePage">
+      <span>☷</span>
+      QUEUE
+    </button>
 
-<nav class="bottom-nav">
-  <button class="nav-item active" data-page="homePage">
-    <span>⌂</span>Home
-  </button>
-  <button class="nav-item" data-page="queuePage">
-    <span>♫</span>Queue
-  </button>
-  <button class="nav-item" data-page="libraryPage">
-    <span>▤</span>Library
-  </button>
-  <button class="nav-item" data-page="settingsPage">
-    <span>⚙</span>Settings
-  </button>
-</nav>
+    <button class="nav-item" data-page="playlistsPage">
+      <span>♫</span>
+      PLAYLISTS
+    </button>
 
-<script src="app.js"></script>
+    <button class="nav-item" data-page="settingsPage">
+      <span>⚙</span>
+      SETTINGS
+    </button>
+  </nav>
+
+  <script src="https://www.youtube.com/iframe_api"></script>
+  <script src="/app.js"></script>
 </body>
 </html>
