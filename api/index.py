@@ -4,8 +4,7 @@ from bot.youtube import search_youtube
 
 app = FastAPI()
 
-
-@app.get("/api/search")
+@app.get("/search")
 async def search(
     q: str = Query(..., min_length=2, max_length=100)
 ):
@@ -21,7 +20,6 @@ async def search(
 
     except Exception as error:
         print("Search API error:", error)
-
         raise HTTPException(
             status_code=500,
             detail="YouTube search failed"
