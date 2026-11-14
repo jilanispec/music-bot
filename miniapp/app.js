@@ -9,39 +9,23 @@ if (tg) {
 const API_BASE = "";
 const INIT_DATA = tg?.initData || "";
 
-let currentPlayMode = "audio";
-let lastRoomSongId = null;
-
 const $ = id => document.getElementById(id);
 
-function applyPlaybackMode(mode) {
-    currentPlayMode = mode === "video" ? "video" : "audio";
-
-    const button = document.getElementById("videoModeButton");
-
-    if (button) {
-        button.textContent =
-            currentPlayMode === "audio"
-                ? "WATCH VIDEO"
-                : "SWITCH TO AUDIO";
-    }
-
-    document.body.classList.toggle(
-        "audio-mode",
-        currentPlayMode === "audio"
-    );
-}
-
-
+let currentPlayMode = "audio";
+let lastRoomSongId = null;
+let lastPlaybackUpdatedAt = null;
 let player = null;
 let playerReady = false;
+let pendingVideoId = null;
 let currentIndex = -1;
 let isSeeking = false;
 let shuffleEnabled = false;
 let progressTimer = null;
+let roomRefreshTimer = null;
 let zoomLevel = 1;
-
 let queue = [];
+let playlists = [];
+let searchResults = [];
 
 try {
   queue = JSON.parse(localStorage.getItem("tanang_queue") || "[]");
@@ -50,15 +34,11 @@ try {
   queue = [];
 }
 
-let playlists = [];
-let searchResults = [];
-
 const icons = {
   play: '<svg viewBox="0 0 24 24"><path d="m8 5 12 7-12 7z"/></svg>',
   pause: '<svg viewBox="0 0 24 24"><path d="M8 5h3v14H8zM15 5h3v14h-3z"/></svg>',
   add: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
   remove: '<svg viewBox="0 0 24 24"><path d="M5 7h14M10 11v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg>',
-  check: '<svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg>',
   playlist: '<svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>'
 };
 
@@ -91,7 +71,82 @@ async function apiRequest(path, options = {}) {
   return data;
 }
 
-// Navigation
+// -------------------------
+// PLAYER MODE
+// -------------------------
+
+function applyPlaybackMode(mode) {
+  currentPlayMode = mode === "video" ? "video" : "audio";
+
+  const button = $("videoModeButton");
+
+  if (button) {
+    button.textContent =
+      currentPlayMode === "audio"
+        ? "WATCH VIDEO"
+        : "SWITCH TO AUDIO";
+  }
+
+  document.body.classList.toggle(
+    "audio-mode",
+    currentPlayMode === "audio"
+  );
+}
+
+function togglePlaybackMode() {
+  applyPlaybackMode(
+    currentPlayMode === "audio" ? "video" : "audio"
+  );
+}
+
+// Keep the YouTube player visible in both modes.
+// Compact mode reduces its height rather than hiding the player.
+(function addPlayerModeStyles() {
+  const style = document.createElement("style");
+
+  style.textContent = `
+    #videoFrame {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      transition: max-height .25s ease;
+    }
+
+    #youtubePlayer {
+      width: 100%;
+      height: 100%;
+      transition: transform .2s ease;
+    }
+
+    body.audio-mode #videoFrame {
+      max-height: 115px;
+    }
+
+    body:not(.audio-mode) #videoFrame {
+      max-height: 600px;
+    }
+
+    .video-mode-button {
+      display: block;
+      width: 100%;
+      margin-top: 14px;
+      padding: 13px 16px;
+      border: 1px solid #e5bd25;
+      border-radius: 12px;
+      background: #e5bd25;
+      color: #090909;
+      font-weight: 800;
+      cursor: pointer;
+    }
+  `;
+
+  document.head.appendChild(style);
+})();
+
+// -------------------------
+// API
+// -------------------------
+
 function showPage(pageId) {
   document.querySelectorAll(".page").forEach(page => {
     page.classList.toggle("active", page.id === pageId);
@@ -117,15 +172,26 @@ document.querySelector(".brand")?.addEventListener("click", event => {
   showPage("homePage");
 });
 
-// YouTube player
+// -------------------------
+// YOUTUBE PLAYER
+// -------------------------
+
 window.onYouTubeIframeAPIReady = function () {
   playerReady = true;
+
+  if (pendingVideoId) {
+    const videoId = pendingVideoId;
+    pendingVideoId = null;
+    loadPlayer(videoId);
+  }
 };
 
 function formatTime(seconds) {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
+
   return `${mins}:${String(secs).padStart(2, "0")}`;
 }
 
@@ -158,8 +224,11 @@ function updatePlayButton(playing) {
 }
 
 function loadPlayer(videoId) {
-  if (!playerReady) {
-    $("searchStatus").textContent = "Player is loading. Try again shortly.";
+  if (!videoId) return;
+
+  if (!playerReady || !window.YT?.Player) {
+    pendingVideoId = videoId;
+    $("playingStatus").textContent = "PLAYER LOADING";
     return;
   }
 
@@ -187,12 +256,17 @@ function loadPlayer(videoId) {
         event.target.playVideo();
         startProgressTimer();
       },
+
       onStateChange: event => {
         const state = event.data;
         const playing = state === YT.PlayerState.PLAYING;
 
         updatePlayButton(playing);
-        $("playingStatus").textContent = playing ? "PLAYING" : "PAUSED";
+
+        $("playingStatus").textContent =
+          playing ? "PLAYING" :
+          state === YT.PlayerState.BUFFERING ? "BUFFERING" :
+          state === YT.PlayerState.ENDED ? "ENDED" : "PAUSED";
 
         if (state === YT.PlayerState.ENDED) {
           playNext();
@@ -200,6 +274,7 @@ function loadPlayer(videoId) {
 
         updateProgress();
       },
+
       onError: event => {
         $("playingStatus").textContent = "UNAVAILABLE";
         $("searchStatus").textContent =
@@ -226,9 +301,7 @@ function playFromQueue(index) {
 
   const song = queue[index];
 
-  $("currentTitle").textContent = song.title || "Unknown title";
-  $("currentChannel").textContent = song.channel || "YouTube";
-  $("playingStatus").textContent = "LOADING";
+  lastRoomSongId = song.id || null;
 
   playSong(song);
   renderQueue();
@@ -268,7 +341,12 @@ function playPrevious() {
   }
 }
 
-// Player controls
+// -------------------------
+// PLAYER CONTROLS
+// -------------------------
+
+$("videoModeButton")?.addEventListener("click", togglePlaybackMode);
+
 $("shuffleButton").addEventListener("click", () => {
   shuffleEnabled = !shuffleEnabled;
   $("shuffleButton").classList.toggle("active", shuffleEnabled);
@@ -319,7 +397,10 @@ $("fullscreenButton").addEventListener("click", async () => {
   }
 });
 
-// Zoom display
+// -------------------------
+// ZOOM
+// -------------------------
+
 function applyZoom() {
   $("youtubePlayer").style.transform = `scale(${zoomLevel})`;
 }
@@ -339,7 +420,10 @@ $("zoomResetButton").addEventListener("click", () => {
   applyZoom();
 });
 
-// Search
+// -------------------------
+// SEARCH
+// -------------------------
+
 async function searchMusic() {
   const query = $("searchInput").value.trim();
 
@@ -380,12 +464,14 @@ async function searchMusic() {
 
 function makeIconButton(icon, label, className, action) {
   const button = document.createElement("button");
+
   button.className = `action-icon ${className || ""}`;
   button.type = "button";
   button.setAttribute("aria-label", label);
   button.title = label;
   button.innerHTML = icon;
   button.addEventListener("click", action);
+
   return button;
 }
 
@@ -428,9 +514,11 @@ function renderResults() {
           currentIndex = existingIndex;
         }
 
+        lastRoomSongId = song.id;
         playSong(song);
         renderQueue();
       }),
+
       makeIconButton(icons.add, "Add to queue", "", () => addToQueue(song))
     );
 
@@ -454,10 +542,14 @@ function addToQueue(song) {
   queue.push(song);
   saveQueue();
   renderQueue();
+
   $("searchStatus").textContent = "Added to your queue.";
 }
 
-// Queue
+// -------------------------
+// QUEUE
+// -------------------------
+
 function renderQueue() {
   const container = $("queueList");
   container.innerHTML = "";
@@ -498,6 +590,7 @@ function renderQueue() {
         "primary",
         () => playFromQueue(index)
       ),
+
       makeIconButton(
         icons.remove,
         "Remove from queue",
@@ -529,25 +622,37 @@ function renderQueue() {
 $("clearQueueButton").addEventListener("click", () => {
   queue = [];
   currentIndex = -1;
+  lastRoomSongId = null;
+
   saveQueue();
   renderQueue();
 });
 
-// Playlists
+// -------------------------
+// PLAYLISTS
+// -------------------------
+
 async function loadPlaylists() {
   $("playlistList").innerHTML =
     '<div class="empty-state">Loading playlists...</div>';
 
   try {
     const data = await apiRequest("/playlists");
-    playlists = Array.isArray(data) ? data : data.playlists || [];
+
+    playlists = Array.isArray(data)
+      ? data
+      : data.playlists || [];
+
     renderPlaylists();
   } catch (error) {
     console.error(error);
+
     $("playlistList").innerHTML = "";
+
     const message = document.createElement("div");
     message.className = "empty-state";
     message.textContent = `Could not load playlists: ${error.message}`;
+
     $("playlistList").appendChild(message);
   }
 }
@@ -639,6 +744,7 @@ function renderPlaylists() {
     saveButton.setAttribute("aria-label", "Save queue to playlist");
     saveButton.title = "Save queue to playlist";
     saveButton.innerHTML = icons.playlist;
+
     saveButton.addEventListener("click", () =>
       saveQueueToPlaylist(playlist.playlist_id)
     );
@@ -652,6 +758,7 @@ function renderPlaylists() {
 
     actions.append(saveButton, deleteButton);
     card.append(title, count, actions);
+
     container.appendChild(card);
   });
 }
@@ -662,26 +769,22 @@ $("playlistName").addEventListener("keydown", event => {
   if (event.key === "Enter") createPlaylist();
 });
 
-
 // -------------------------
 // TELEGRAM ROOM CONNECTION
 // -------------------------
 
 function getRoomId() {
-  // Telegram Mini App direct-link parameter
   const startParam = tg?.initDataUnsafe?.start_param || "";
 
   if (startParam.startsWith("room_")) {
     return startParam.substring(5);
   }
 
-  // Browser URL fallback for testing
   const params = new URLSearchParams(window.location.search);
   const urlRoom = params.get("room");
 
   if (urlRoom) return urlRoom;
 
-  // Additional Telegram URL fallback
   const telegramParam = params.get("tgWebAppStartParam");
 
   if (telegramParam?.startsWith("room_")) {
@@ -704,35 +807,41 @@ function updateRoomDisplay() {
   $("settingsRoom").textContent = `Room #${roomId}`;
 }
 
-// Load the shared queue from GitHub-backed room storage
 async function loadRoomQueue() {
-  if (!roomId) {
-    console.warn("No Telegram room parameter found.");
-    return;
-  }
+  if (!roomId) return;
 
   try {
     const data = await apiRequest(
       `/rooms/${encodeURIComponent(roomId)}`
     );
 
-    if (!data.success || !data.room) {
+    // Accept either {room: {...}} or a direct room response.
+    const room = data.room || data;
+
+    if (data.success === false || !room) {
       throw new Error("Room data unavailable.");
     }
 
-    const serverQueue = data.room.queue || [];
+    const serverQueue = room.queue || [];
 
     if (!Array.isArray(serverQueue)) {
       throw new Error("Invalid room queue.");
     }
 
-    // Server queue is authoritative for this room.
     queue = serverQueue;
-
     saveQueue();
 
-    // Restore current song selection if it exists in the queue.
-    const currentSong = data.room.current_song;
+    const playback = room.playback || {};
+    const serverMode = playback.mode || "audio";
+    const updatedAt = playback.updated_at || null;
+
+    // Apply a mode update when the bot changes the room state.
+    if (updatedAt !== lastPlaybackUpdatedAt) {
+      applyPlaybackMode(serverMode);
+      lastPlaybackUpdatedAt = updatedAt;
+    }
+
+    const currentSong = room.current_song;
 
     if (currentSong?.id) {
       const index = queue.findIndex(
@@ -740,15 +849,21 @@ async function loadRoomQueue() {
       );
 
       currentIndex = index;
-    } else {
-      currentIndex = -1;
+
+      // Only load a song when the room's current song changes.
+      if (currentSong.id !== lastRoomSongId) {
+        lastRoomSongId = currentSong.id;
+
+        const songToPlay = index >= 0
+          ? queue[index]
+          : currentSong;
+
+        playSong(songToPlay);
+        renderQueue();
+      }
     }
 
     renderQueue();
-
-    console.log(
-      `Loaded room ${roomId}: ${queue.length} songs`
-    );
 
     if (queue.length > 0) {
       $("searchStatus").textContent =
@@ -766,20 +881,18 @@ async function loadRoomQueue() {
   }
 }
 
-// Refresh shared queue periodically
-let roomRefreshTimer = null;
-
 function startRoomRefresh() {
   if (!roomId) return;
 
   clearInterval(roomRefreshTimer);
 
   roomRefreshTimer = setInterval(() => {
-    loadRoomQueue();
-  }, 10000);
+    if (!document.hidden) {
+      loadRoomQueue();
+    }
+  }, 4000);
 }
 
-// Refresh when returning to the Mini App
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && roomId) {
     loadRoomQueue();
@@ -790,8 +903,8 @@ document.addEventListener("visibilitychange", () => {
 // INITIALIZATION
 // -------------------------
 
+applyPlaybackMode("audio");
 updateRoomDisplay();
-
 renderQueue();
 loadPlaylists();
 
@@ -799,4 +912,3 @@ if (roomId) {
   loadRoomQueue();
   startRoomRefresh();
 }
-
