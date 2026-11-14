@@ -39,6 +39,17 @@
         "url": "https://www.youtube.com/watch?v=SxoTAvwCr4A",
         "requested_by": "2079655933",
         "media_type": "music"
+      },
+      {
+        "id": "SxoTAvwCr4A",
+        "title": "Malang Song | DHOOM:3 | Aamir Khan, Katrina Kaif | Siddharth Mahadevan, Shilpa Rao, Pritam, Sameer",
+        "channel": "YRF",
+        "thumbnail": "https://i.ytimg.com/vi/SxoTAvwCr4A/hqdefault.jpg",
+        "duration": "5:41",
+        "duration_seconds": 341,
+        "url": "https://www.youtube.com/watch?v=SxoTAvwCr4A",
+        "requested_by": "2079655933",
+        "media_type": "music"
       }
     ],
     "participants": [],
