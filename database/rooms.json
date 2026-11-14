@@ -1,24 +1,45 @@
 {
-    "2079655933": {
-        "room_id": "0002",
-        "chat_id": 2079655933,
-        "host_id": 2079655933,
-        "created_at": "2026-11-14T07:45:23.702321+00:00",
-        "status": "active",
-        "current_song": null,
-        "queue": [
-            {
-                "video_id": "CKpbdCciELk",
-                "title": "Fear Song | Devara Part - 1 | NTR | Koratala Siva | Anirudh Ravichander | 27 Sep 2024",
-                "channel": "T-Series Telugu",
-                "thumbnail": "https://i.ytimg.com/vi/CKpbdCciELk/hqdefault.jpg",
-                "duration": "3:17",
-                "url": "https://www.youtube.com/watch?v=CKpbdCciELk",
-                "requested_by": 2079655933,
-                "media_type": "music"
-            }
-        ],
-        "participants": [],
-        "approved_admins": []
-    }
+  "2079655933": {
+    "room_id": "0002",
+    "chat_id": 2079655933,
+    "host_id": 2079655933,
+    "created_at": "2026-11-14T07:45:23.702321+00:00",
+    "status": "active",
+    "current_song": {
+      "id": "W0DM5lcj6mw",
+      "title": "Imagine Dragons - Believer (Lyrics)",
+      "channel": "7clouds",
+      "thumbnail": "https://i.ytimg.com/vi/W0DM5lcj6mw/hqdefault.jpg",
+      "duration": "3:25",
+      "duration_seconds": 205,
+      "url": "https://www.youtube.com/watch?v=W0DM5lcj6mw",
+      "requested_by": "2079655933",
+      "media_type": "music"
+    },
+    "queue": [
+      {
+        "video_id": "CKpbdCciELk",
+        "title": "Fear Song | Devara Part - 1 | NTR | Koratala Siva | Anirudh Ravichander | 27 Sep 2024",
+        "channel": "T-Series Telugu",
+        "thumbnail": "https://i.ytimg.com/vi/CKpbdCciELk/hqdefault.jpg",
+        "duration": "3:17",
+        "url": "https://www.youtube.com/watch?v=CKpbdCciELk",
+        "requested_by": 2079655933,
+        "media_type": "music"
+      },
+      {
+        "id": "W0DM5lcj6mw",
+        "title": "Imagine Dragons - Believer (Lyrics)",
+        "channel": "7clouds",
+        "thumbnail": "https://i.ytimg.com/vi/W0DM5lcj6mw/hqdefault.jpg",
+        "duration": "3:25",
+        "duration_seconds": 205,
+        "url": "https://www.youtube.com/watch?v=W0DM5lcj6mw",
+        "requested_by": "2079655933",
+        "media_type": "music"
+      }
+    ],
+    "participants": [],
+    "approved_admins": []
+  }
 }
