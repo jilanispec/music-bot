@@ -1,15 +1,19 @@
 {
   "2079655933": {
-    "room_id": "0002",
-    "chat_id": 2079655933,
-    "host_id": 2079655933,
-    "created_at": "2026-11-14T07:45:23.702321+00:00",
-    "status": "closed",
+    "room_id": "0005",
+    "chat_id": "2079655933",
+    "host_id": "2079655933",
+    "created_at": "2026-11-14T16:02:24.409122+00:00",
+    "status": "active",
     "current_song": null,
     "queue": [],
     "participants": [],
     "approved_admins": [],
-    "closed_at": "2026-11-14T13:59:42.922407+00:00"
+    "playback": {
+      "state": "paused",
+      "position": 0,
+      "updated_at": "2026-11-14T16:02:24.409138+00:00"
+    }
   },
   "-1004412945197": {
     "room_id": "0004",
