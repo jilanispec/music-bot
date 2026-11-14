@@ -1,6 +1,19 @@
 
 import asyncio
 
+from storage.manager import (
+    add_song,
+    get_queue,
+    remove_song,
+    skip_song
+)
+
+__all__ = [
+    "add_song",
+    "get_queue",
+    "remove_song",
+    "skip_song"
+]
 
 from bot.rooms import ROOMS_FILE, read_json, write_json, room_lock
 
