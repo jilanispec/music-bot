@@ -5,14 +5,37 @@
     "host_id": "2079655933",
     "created_at": "2026-11-14T16:02:24.409122+00:00",
     "status": "active",
-    "current_song": null,
-    "queue": [],
+    "current_song": {
+      "id": "CKpbdCciELk",
+      "title": "Fear Song | Devara Part - 1 | NTR | Koratala Siva | Anirudh Ravichander | 27 Sep 2024",
+      "channel": "T-Series Telugu",
+      "thumbnail": "https://i.ytimg.com/vi/CKpbdCciELk/hqdefault.jpg",
+      "duration": "3:17",
+      "duration_seconds": 197,
+      "url": "https://www.youtube.com/watch?v=CKpbdCciELk",
+      "requested_by": "2079655933",
+      "media_type": "music"
+    },
+    "queue": [
+      {
+        "id": "CKpbdCciELk",
+        "title": "Fear Song | Devara Part - 1 | NTR | Koratala Siva | Anirudh Ravichander | 27 Sep 2024",
+        "channel": "T-Series Telugu",
+        "thumbnail": "https://i.ytimg.com/vi/CKpbdCciELk/hqdefault.jpg",
+        "duration": "3:17",
+        "duration_seconds": 197,
+        "url": "https://www.youtube.com/watch?v=CKpbdCciELk",
+        "requested_by": "2079655933",
+        "media_type": "music"
+      }
+    ],
     "participants": [],
     "approved_admins": [],
     "playback": {
       "state": "paused",
       "position": 0,
-      "updated_at": "2026-11-14T16:02:24.409138+00:00"
+      "updated_at": "2026-11-14T16:02:25.656330+00:00",
+      "mode": "audio"
     }
   },
   "-1004412945197": {
