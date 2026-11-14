@@ -5,6 +5,7 @@ from aiogram import Router
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message
 
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from bot.youtube import search_youtube
 from storage.manager import (
     get_or_create_room,
@@ -120,6 +121,23 @@ async def process_request(message: Message, query: str, media_type: str):
         channel = escape(str(song.get("channel", "Unknown channel")))
         duration = escape(str(song.get("duration", "Unknown")))
         url = escape(str(song.get("url", "")), quote=True)
+
+        miniapp_keyboard = None
+
+        # Telegram Web App buttons are supported in private chats.
+       if message.chat.type == "private":
+           miniapp_keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="OPEN TANANG MUSIC",
+                            web_app=WebAppInfo(
+                                url="https://music-bot-dusky.vercel.app/"
+                            )
+                        )
+                    ]
+                ]
+            )
 
         await status.edit_text(
             f"<b>ADDED TO QUEUE</b>\n\n"
