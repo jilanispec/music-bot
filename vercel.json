@@ -21,6 +21,10 @@
       "dest": "/api/index.py"
     },
     {
+      "src": "/setup-webhook",
+      "dest": "/api/index.py"
+    },
+    {
       "src": "/(.*)",
       "dest": "/miniapp/$1"
     }
