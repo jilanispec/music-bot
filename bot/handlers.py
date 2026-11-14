@@ -102,6 +102,7 @@ async def start(message: Message):
     )
 
 
+
 async def process_request(message: Message, query: str, media_type: str):
     if not message.from_user:
         await message.answer("Could not identify the requesting user.")
@@ -109,7 +110,6 @@ async def process_request(message: Message, query: str, media_type: str):
 
     if not query:
         command = "/play" if media_type == "music" else "/vplay"
-
         await message.answer(
             f"Usage: <code>{command} song name</code>",
             parse_mode="HTML"
@@ -149,31 +149,52 @@ async def process_request(message: Message, query: str, media_type: str):
             return
 
         title = escape(str(song.get("title", "Unknown title")))
-        channel = escape(str(song.get("channel", "Unknown channel")))
+        channel = escape(str(song.get("channel", "YouTube")))
         duration = escape(str(song.get("duration", "Unknown")))
-        url = escape(str(song.get("url", "")), quote=True)
+        video_url = escape(str(song.get("url", "")), quote=True)
 
         keyboard = miniapp_keyboard(room["room_id"])
 
-        await status.edit_text(
-            f"<b>ADDED TO QUEUE</b>\n\n"
-            f"<b>{title}</b>\n"
+        caption = (
+            "<b>ADDED TO QUEUE</b>\n\n"
+            f'<a href="{video_url}"><b>{title}</b></a>\n'
             f"<i>{channel}</i>\n"
             f"<code>{duration}</code>\n\n"
             f"Room: <code>#{escape(str(room['room_id']))}</code>\n"
-            f"Queue position: <code>{position}</code>\n\n"
-            f'<a href="{url}">Open on YouTube</a>',
-            parse_mode="HTML",
-            disable_web_page_preview=True,
-            reply_markup=keyboard
+            f"Queue position: <code>{position}</code>"
         )
+
+        thumbnail = song.get("thumbnail")
+
+        await status.delete()
+
+        if thumbnail:
+            await message.answer_photo(
+                photo=thumbnail,
+                caption=caption,
+                parse_mode="HTML",
+                reply_markup=keyboard
+            )
+        else:
+            await message.answer(
+                caption,
+                parse_mode="HTML",
+                reply_markup=keyboard,
+                disable_web_page_preview=True
+            )
 
     except Exception as error:
         print("PLAY REQUEST ERROR:", repr(error))
 
-        await status.edit_text(
-            "Something went wrong while processing your request."
-        )
+        try:
+            await status.edit_text(
+                "Something went wrong while processing your request."
+            )
+        except Exception:
+            await message.answer(
+                "Something went wrong while processing your request."
+            )
+
 
 
 @router.message(Command("play"))
