@@ -27,6 +27,17 @@
         "url": "https://www.youtube.com/watch?v=CKpbdCciELk",
         "requested_by": "2079655933",
         "media_type": "music"
+      },
+      {
+        "id": "GWNrPJyRTcA",
+        "title": "Full Video: Chuttamalle - Devara | NTR | Janhvi Kapoor | Anirudh | Shilpa Rao | Koratala Siva",
+        "channel": "T-Series Telugu",
+        "thumbnail": "https://i.ytimg.com/vi/GWNrPJyRTcA/hqdefault.jpg",
+        "duration": "3:37",
+        "duration_seconds": 217,
+        "url": "https://www.youtube.com/watch?v=GWNrPJyRTcA",
+        "requested_by": "2079655933",
+        "media_type": "music"
       }
     ],
     "participants": [],
@@ -34,7 +45,7 @@
     "playback": {
       "state": "paused",
       "position": 0,
-      "updated_at": "2026-11-14T16:02:26.739400+00:00",
+      "updated_at": "2026-11-15T06:35:09.895780+00:00",
       "mode": "audio"
     }
   },
