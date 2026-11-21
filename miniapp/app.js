@@ -1,24 +1,37 @@
 
-const tg = window.Telegram?.WebApp;
+/* =========================================
+   TANANG MUSIC - STANDALONE ANDROID APP
+   Complete miniapp/app.js replacement
+========================================= */
 
-if (tg) {
-  tg.ready();
-  tg.expand();
-}
+// -------------------------
+// CONFIGURATION
+// -------------------------
 
-const API_BASE = "";
-const INIT_DATA = tg?.initData || "";
+const API_BASE = "https://YOUR-BACKEND-DOMAIN.com";
+
 const $ = id => document.getElementById(id);
+
+const STORAGE = {
+  token: "tanang_auth_token",
+  queue: "tanang_queue",
+  room: "tanang_room_id"
+};
+
+let AUTH_TOKEN = localStorage.getItem(STORAGE.token) || "";
 
 let player = null;
 let playerReady = false;
 let pendingVideoId = null;
+
 let currentPlayMode = "audio";
 let currentIndex = -1;
 let lastRoomSongId = null;
+
 let isSeeking = false;
 let shuffleEnabled = false;
 let zoomLevel = 1;
+
 let progressTimer = null;
 let roomRefreshTimer = null;
 
@@ -26,10 +39,93 @@ let queue = [];
 let playlists = [];
 let searchResults = [];
 
+// -------------------------
+// AUTHENTICATION
+// -------------------------
+
+function setAuthToken(token) {
+  AUTH_TOKEN = token || "";
+
+  if (AUTH_TOKEN) {
+    localStorage.setItem(STORAGE.token, AUTH_TOKEN);
+  } else {
+    localStorage.removeItem(STORAGE.token);
+  }
+}
+
+function authHeaders() {
+  const headers = {
+    "Content-Type": "application/json"
+  };
+
+  if (AUTH_TOKEN) {
+    headers.Authorization = `Bearer ${AUTH_TOKEN}`;
+  }
+
+  return headers;
+}
+
+async function apiRequest(path, options = {}) {
+  if (!API_BASE || API_BASE.includes("YOUR-BACKEND")) {
+    throw new Error("Configure your backend URL first.");
+  }
+
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: {
+      ...authHeaders(),
+      ...(options.headers || {})
+    }
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (response.status === 401) {
+    setAuthToken("");
+    throw new Error("Login required. Please sign in again.");
+  }
+
+  if (!response.ok) {
+    throw new Error(data.detail || `API error ${response.status}`);
+  }
+
+  return data;
+}
+
+// Example login function.
+// Backend must provide POST /auth/login returning {access_token:"..."}
+
+async function login(username, password) {
+  const data = await apiRequest("/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ username, password })
+  });
+
+  if (!data.access_token) {
+    throw new Error("Backend did not return an access token.");
+  }
+
+  setAuthToken(data.access_token);
+
+  await initializeApp();
+
+  return data;
+}
+
+function logout() {
+  setAuthToken("");
+  location.reload();
+}
+
+// -------------------------
+// SONG NORMALIZATION
+// -------------------------
+
 function normalizeSong(song) {
   if (!song || typeof song !== "object") return null;
 
   const id = song.id || song.video_id;
+
   if (!id) return null;
 
   return {
@@ -45,41 +141,30 @@ function normalizeSong(song) {
   };
 }
 
+// -------------------------
+// LOCAL QUEUE STORAGE
+// -------------------------
+
 function saveQueue() {
   try {
-    localStorage.setItem("tanang_queue", JSON.stringify(queue));
+    localStorage.setItem(STORAGE.queue, JSON.stringify(queue));
   } catch (error) {
     console.warn("Queue save failed:", error);
   }
 }
 
-function authHeaders() {
-  return {
-    "Content-Type": "application/json",
-    "X-Telegram-Init-Data": INIT_DATA
-  };
-}
+function loadSavedQueue() {
+  try {
+    const saved = JSON.parse(
+      localStorage.getItem(STORAGE.queue) || "[]"
+    );
 
-async function apiRequest(path, options = {}) {
-  if (!INIT_DATA) {
-    throw new Error("Open this app through Telegram.");
+    queue = Array.isArray(saved)
+      ? saved.map(normalizeSong).filter(Boolean)
+      : [];
+  } catch {
+    queue = [];
   }
-
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: {
-      ...authHeaders(),
-      ...(options.headers || {})
-    }
-  });
-
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(data.detail || `API error ${response.status}`);
-  }
-
-  return data;
 }
 
 // -------------------------
@@ -108,6 +193,10 @@ function togglePlaybackMode() {
     currentPlayMode === "audio" ? "video" : "audio"
   );
 }
+
+// -------------------------
+// PLAYER STYLES
+// -------------------------
 
 (function addPlayerStyles() {
   const style = document.createElement("style");
@@ -241,7 +330,9 @@ function loadPlayer(videoId) {
 
   if (!playerReady || !window.YT?.Player) {
     pendingVideoId = videoId;
+
     $("playingStatus").textContent = "PLAYER LOADING";
+
     return;
   }
 
@@ -256,14 +347,16 @@ function loadPlayer(videoId) {
 
   player = new YT.Player("youtubePlayer", {
     videoId,
+
     playerVars: {
       playsinline: 1,
       controls: 1,
       rel: 0,
       fs: 1,
       enablejsapi: 1,
-      origin: window.location.origin
+      origin: location.origin
     },
+
     events: {
       onReady: event => {
         event.target.playVideo();
@@ -272,6 +365,7 @@ function loadPlayer(videoId) {
 
       onStateChange: event => {
         const state = event.data;
+
         const playing = state === YT.PlayerState.PLAYING;
 
         updatePlayButton(playing);
@@ -290,6 +384,7 @@ function loadPlayer(videoId) {
 
       onError: event => {
         $("playingStatus").textContent = "UNAVAILABLE";
+
         $("searchStatus").textContent =
           `YouTube playback error ${event.data}`;
       }
@@ -299,10 +394,12 @@ function loadPlayer(videoId) {
 
 function playSong(rawSong) {
   const song = normalizeSong(rawSong);
+
   if (!song) return;
 
   $("currentTitle").textContent = song.title;
   $("currentChannel").textContent = song.channel;
+
   $("videoPlaceholder").style.display = "none";
 
   if (song.media_type === "video") {
@@ -316,11 +413,13 @@ function playFromQueue(index) {
   if (index < 0 || index >= queue.length) return;
 
   currentIndex = index;
+
   const song = normalizeSong(queue[index]);
 
   if (!song) return;
 
   lastRoomSongId = song.id;
+
   playSong(song);
   renderQueue();
 }
@@ -349,8 +448,11 @@ function playNext() {
 function playPrevious() {
   if (!queue.length) return;
 
-  if (player && player.getCurrentTime &&
-      player.getCurrentTime() > 3) {
+  if (
+    player &&
+    player.getCurrentTime &&
+    player.getCurrentTime() > 3
+  ) {
     player.seekTo(0, true);
     return;
   }
@@ -366,17 +468,18 @@ function playPrevious() {
 
 $("videoModeButton")?.addEventListener("click", togglePlaybackMode);
 
-$("shuffleButton").addEventListener("click", () => {
+$("shuffleButton")?.addEventListener("click", () => {
   shuffleEnabled = !shuffleEnabled;
 
   $("shuffleButton").classList.toggle("active", shuffleEnabled);
+
   $("shuffleButton").setAttribute(
     "aria-pressed",
     String(shuffleEnabled)
   );
 });
 
-$("playPauseButton").addEventListener("click", () => {
+$("playPauseButton")?.addEventListener("click", () => {
   if (!player || !window.YT) return;
 
   if (player.getPlayerState() === YT.PlayerState.PLAYING) {
@@ -386,26 +489,27 @@ $("playPauseButton").addEventListener("click", () => {
   }
 });
 
-$("previousButton").addEventListener("click", playPrevious);
-$("nextButton").addEventListener("click", playNext);
+$("previousButton")?.addEventListener("click", playPrevious);
+$("nextButton")?.addEventListener("click", playNext);
 
-$("seekBar").addEventListener("input", () => {
+$("seekBar")?.addEventListener("input", () => {
   isSeeking = true;
 
   $("currentTime").textContent =
     formatTime(Number($("seekBar").value));
 });
 
-$("seekBar").addEventListener("change", () => {
+$("seekBar")?.addEventListener("change", () => {
   if (player?.seekTo) {
     player.seekTo(Number($("seekBar").value), true);
   }
 
   isSeeking = false;
+
   updateProgress();
 });
 
-$("fullscreenButton").addEventListener("click", async () => {
+$("fullscreenButton")?.addEventListener("click", async () => {
   const frame = $("videoFrame");
 
   try {
@@ -418,7 +522,7 @@ $("fullscreenButton").addEventListener("click", async () => {
     }
   } catch (error) {
     console.error(error);
-    alert("Full-screen is unavailable in this Telegram view.");
+    alert("Full-screen unavailable.");
   }
 });
 
@@ -430,17 +534,17 @@ function applyZoom() {
   $("youtubePlayer").style.transform = `scale(${zoomLevel})`;
 }
 
-$("zoomInButton").addEventListener("click", () => {
+$("zoomInButton")?.addEventListener("click", () => {
   zoomLevel = Math.min(zoomLevel + 0.1, 1.5);
   applyZoom();
 });
 
-$("zoomOutButton").addEventListener("click", () => {
+$("zoomOutButton")?.addEventListener("click", () => {
   zoomLevel = Math.max(zoomLevel - 0.1, 1);
   applyZoom();
 });
 
-$("zoomResetButton").addEventListener("click", () => {
+$("zoomResetButton")?.addEventListener("click", () => {
   zoomLevel = 1;
   applyZoom();
 });
@@ -453,7 +557,9 @@ async function searchMusic() {
   const query = $("searchInput").value.trim();
 
   if (query.length < 2) {
-    $("searchStatus").textContent = "Enter at least 2 characters.";
+    $("searchStatus").textContent =
+      "Enter at least 2 characters.";
+
     return;
   }
 
@@ -462,7 +568,7 @@ async function searchMusic() {
 
   try {
     const response = await fetch(
-      `/search?q=${encodeURIComponent(query)}&limit=10`
+      `${API_BASE}/search?q=${encodeURIComponent(query)}&limit=10`
     );
 
     const data = await response.json();
@@ -485,10 +591,12 @@ async function searchMusic() {
     }
 
     $("searchStatus").textContent = "";
+
     renderResults();
 
   } catch (error) {
     console.error(error);
+
     $("searchStatus").textContent =
       `Search unavailable: ${error.message}`;
   }
@@ -498,10 +606,14 @@ function makeIconButton(icon, label, className, action) {
   const button = document.createElement("button");
 
   button.className = `action-icon ${className || ""}`;
+
   button.type = "button";
+
   button.setAttribute("aria-label", label);
   button.title = label;
+
   button.innerHTML = icon;
+
   button.addEventListener("click", action);
 
   return button;
@@ -509,44 +621,50 @@ function makeIconButton(icon, label, className, action) {
 
 function renderResults() {
   const container = $("searchResults");
+
   container.innerHTML = "";
 
   searchResults.forEach((song, index) => {
     const row = document.createElement("div");
+
     row.className = "song-row";
 
     const number = document.createElement("span");
+
     number.className = "song-number";
     number.textContent = String(index + 1).padStart(2, "0");
 
     const details = document.createElement("div");
+
     details.className = "song-details";
 
     const title = document.createElement("h3");
+
     title.textContent = song.title;
 
     const subtitle = document.createElement("p");
+
     subtitle.textContent =
       `${song.channel} · ${song.duration || "Unknown duration"}`;
 
     details.append(title, subtitle);
 
     const actions = document.createElement("div");
+
     actions.className = "song-actions";
 
     actions.append(
       makeIconButton(icons.play, "Play song", "primary", () => {
-        const index = queue.findIndex(item => item.id === song.id);
+        let index = queue.findIndex(item => item.id === song.id);
 
         if (index === -1) {
           queue.push(song);
-          currentIndex = queue.length - 1;
-        } else {
-          currentIndex = index;
+          index = queue.length - 1;
         }
 
+        currentIndex = index;
+
         saveQueue();
-        lastRoomSongId = song.id;
         playSong(song);
         renderQueue();
       }),
@@ -557,18 +675,20 @@ function renderResults() {
     );
 
     row.append(number, details, actions);
+
     container.appendChild(row);
   });
 }
 
-$("searchButton").addEventListener("click", searchMusic);
+$("searchButton")?.addEventListener("click", searchMusic);
 
-$("searchInput").addEventListener("keydown", event => {
+$("searchInput")?.addEventListener("keydown", event => {
   if (event.key === "Enter") searchMusic();
 });
 
 function addToQueue(rawSong) {
   const song = normalizeSong(rawSong);
+
   if (!song) return;
 
   if (queue.some(item => item.id === song.id)) {
@@ -577,6 +697,7 @@ function addToQueue(rawSong) {
   }
 
   queue.push(song);
+
   saveQueue();
   renderQueue();
 
@@ -589,38 +710,48 @@ function addToQueue(rawSong) {
 
 function renderQueue() {
   const container = $("queueList");
+
   container.innerHTML = "";
 
   if (!queue.length) {
     container.innerHTML =
       '<div class="empty-state">Your queue is empty.</div>';
+
     return;
   }
 
   queue.forEach((rawSong, index) => {
     const song = normalizeSong(rawSong);
+
     if (!song) return;
 
     const row = document.createElement("div");
+
     row.className = "song-row";
 
     const number = document.createElement("span");
+
     number.className = "song-number";
+
     number.textContent = String(index + 1).padStart(2, "0");
 
     const details = document.createElement("div");
+
     details.className = "song-details";
 
     const title = document.createElement("h3");
+
     title.textContent = song.title;
 
     const subtitle = document.createElement("p");
+
     subtitle.textContent =
       `${song.channel} · ${song.duration}`;
 
     details.append(title, subtitle);
 
     const actions = document.createElement("div");
+
     actions.className = "song-actions";
 
     actions.append(
@@ -647,11 +778,12 @@ function renderQueue() {
     }
 
     row.append(number, details, actions);
+
     container.appendChild(row);
   });
 }
 
-$("clearQueueButton").addEventListener("click", () => {
+$("clearQueueButton")?.addEventListener("click", () => {
   queue = [];
   currentIndex = -1;
   lastRoomSongId = null;
@@ -683,7 +815,9 @@ async function loadPlaylists() {
     $("playlistList").innerHTML = "";
 
     const message = document.createElement("div");
+
     message.className = "empty-state";
+
     message.textContent =
       `Could not load playlists: ${error.message}`;
 
@@ -706,6 +840,7 @@ async function createPlaylist() {
     });
 
     $("playlistName").value = "";
+
     await loadPlaylists();
 
   } catch (error) {
@@ -747,6 +882,7 @@ async function saveQueueToPlaylist(playlistId) {
     }
 
     await loadPlaylists();
+
     alert("Queue saved to playlist.");
 
   } catch (error) {
@@ -756,32 +892,45 @@ async function saveQueueToPlaylist(playlistId) {
 
 function renderPlaylists() {
   const container = $("playlistList");
+
   container.innerHTML = "";
 
   if (!playlists.length) {
     container.innerHTML =
       '<div class="empty-state">No playlists created yet.</div>';
+
     return;
   }
 
   playlists.forEach(playlist => {
     const card = document.createElement("div");
+
     card.className = "playlist-card";
 
     const title = document.createElement("h3");
+
     title.textContent = playlist.name;
 
     const count = document.createElement("p");
+
     count.textContent =
       `${(playlist.songs || []).length} songs`;
 
     const actions = document.createElement("div");
+
     actions.className = "playlist-actions";
 
     const saveButton = document.createElement("button");
+
     saveButton.className = "action-icon";
-    saveButton.setAttribute("aria-label", "Save queue to playlist");
+
+    saveButton.setAttribute(
+      "aria-label",
+      "Save queue to playlist"
+    );
+
     saveButton.title = "Save queue to playlist";
+
     saveButton.innerHTML = icons.playlist;
 
     saveButton.addEventListener("click", () => {
@@ -796,43 +945,49 @@ function renderPlaylists() {
     );
 
     actions.append(saveButton, deleteButton);
+
     card.append(title, count, actions);
+
     container.appendChild(card);
   });
 }
 
-$("createPlaylist").addEventListener("click", createPlaylist);
+$("createPlaylist")?.addEventListener("click", createPlaylist);
 
-$("playlistName").addEventListener("keydown", event => {
+$("playlistName")?.addEventListener("keydown", event => {
   if (event.key === "Enter") createPlaylist();
 });
 
 // -------------------------
-// TELEGRAM ROOM
+// STANDALONE ROOM SYSTEM
 // -------------------------
 
 function getRoomId() {
-  const startParam = tg?.initDataUnsafe?.start_param || "";
-
-  if (startParam.startsWith("room_")) {
-    return startParam.substring(5);
-  }
-
-  const params = new URLSearchParams(window.location.search);
+  const params = new URLSearchParams(location.search);
 
   const urlRoom = params.get("room");
-  if (urlRoom) return urlRoom;
 
-  const telegramParam = params.get("tgWebAppStartParam");
-
-  if (telegramParam?.startsWith("room_")) {
-    return telegramParam.substring(5);
+  if (urlRoom) {
+    localStorage.setItem(STORAGE.room, urlRoom);
+    return urlRoom;
   }
 
-  return null;
+  return localStorage.getItem(STORAGE.room) || null;
 }
 
-const roomId = getRoomId();
+let roomId = getRoomId();
+
+function setRoomId(id) {
+  roomId = id || null;
+
+  if (roomId) {
+    localStorage.setItem(STORAGE.room, roomId);
+  } else {
+    localStorage.removeItem(STORAGE.room);
+  }
+
+  updateRoomDisplay();
+}
 
 function updateRoomDisplay() {
   if (!roomId) {
@@ -866,6 +1021,7 @@ async function loadRoomQueue() {
     saveQueue();
 
     const playback = room.playback || {};
+
     const currentSong = normalizeSong(room.current_song);
 
     if (currentSong) {
@@ -932,15 +1088,29 @@ document.addEventListener("visibilitychange", () => {
 // INITIALIZATION
 // -------------------------
 
-applyPlaybackMode("audio");
-updateRoomDisplay();
-renderQueue();
-loadPlaylists();
+async function initializeApp() {
+  applyPlaybackMode("audio");
 
-if (roomId) {
-  loadRoomQueue();
-  startRoomRefresh();
-} else {
-  $("searchStatus").textContent =
-    "Open TANANG MUSIC using a Telegram room button.";
+  updateRoomDisplay();
+
+  loadSavedQueue();
+
+  renderQueue();
+
+  if (AUTH_TOKEN) {
+    await loadPlaylists();
+  } else {
+    $("playlistList").innerHTML =
+      '<div class="empty-state">Please log in to use playlists.</div>';
+  }
+
+  if (roomId && AUTH_TOKEN) {
+    await loadRoomQueue();
+    startRoomRefresh();
+  } else if (!roomId) {
+    $("searchStatus").textContent =
+      "Welcome to TANANG MUSIC.";
+  }
 }
+
+initializeApp();
