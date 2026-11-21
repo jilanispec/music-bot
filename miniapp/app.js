@@ -8,7 +8,7 @@
 // CONFIGURATION
 // -------------------------
 
-const API_BASE = "https://YOUR-BACKEND-DOMAIN.com";
+const API_BASE = "https://draft-bot-wp2s.onrender.com";
 
 const $ = id => document.getElementById(id);
 
