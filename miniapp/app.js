@@ -8,7 +8,7 @@
 // CONFIGURATION
 // -------------------------
 
-const API_BASE = "https://draft-bot-wp2s.onrender.com";
+const API_BASE = "music-bot-dusky.vercel.app";
 
 const $ = id => document.getElementById(id);
 
